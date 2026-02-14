@@ -149,6 +149,18 @@ def get_checkbox_field(html, label):
     return ""
 
 
+def get_document_url(html, row_id):
+    """Extraheer de PDF-document URL uit het Hoofddocument veld."""
+    pattern = r'<dt[^>]*>\s*Hoofddocument\s*</dt>\s*<dd[^>]*>(.*?)</dd>'
+    match = re.search(pattern, html, re.DOTALL)
+    if not match:
+        return ""
+    doc_link = re.search(r'href="(/Reports/Document/[^"]+)"', match.group(1))
+    if doc_link:
+        return f"{BASE_URL}{doc_link.group(1)}"
+    return ""
+
+
 def fetch_item_details(record):
     """Haal detailpagina op voor een motie en extraheer statusvelden."""
     row_id = record["DT_RowId"]
@@ -157,6 +169,7 @@ def fetch_item_details(record):
     try:
         html = http_request(url)
 
+        record["document_url"] = get_document_url(html, row_id)
         record["portefeuillehouder"] = get_list_field(html, "Portefeuillehouder")
         record["beleidsveld"] = get_list_field(html, "Beleidsveld")
         record["commissie"] = get_text_field(html, "Commissie")
@@ -171,9 +184,9 @@ def fetch_item_details(record):
 
     except Exception as e:
         print(f"  FOUT bij {row_id} ({record.get('externalid','')}): {e}", file=sys.stderr)
-        for key in ["portefeuillehouder", "beleidsveld", "commissie", "omschrijving",
-                     "verwachte_datum_afdoening", "stand_van_zaken", "afgedaan",
-                     "afdoeningsvoorstel_aanwezig", "toelichting", "afdoening"]:
+        for key in ["document_url", "portefeuillehouder", "beleidsveld", "commissie",
+                     "omschrijving", "verwachte_datum_afdoening", "stand_van_zaken",
+                     "afgedaan", "afdoeningsvoorstel_aanwezig", "toelichting", "afdoening"]:
             record[key] = ""
         record["detail_opgehaald"] = False
 
@@ -193,6 +206,36 @@ def fetch_details_for_aangenomen(records):
             completed += 1
             if completed % 100 == 0 or completed == total:
                 print(f"  Details opgehaald: {completed}/{total}")
+
+    return records
+
+
+def fetch_document_url(record):
+    """Haal alleen de document-URL op voor een motie."""
+    row_id = record["DT_RowId"]
+    url = f"{BASE_URL}/Reports/Item/{row_id}"
+    try:
+        html = http_request(url)
+        record["document_url"] = get_document_url(html, row_id)
+    except Exception as e:
+        print(f"  FOUT bij document URL {row_id} ({record.get('externalid','')}): {e}", file=sys.stderr)
+        record["document_url"] = ""
+    return record
+
+
+def fetch_document_urls_for_overige(records):
+    """Haal document-URLs op voor niet-aangenomen moties."""
+    overige = [r for r in records if r.get("uitslag") != "Aangenomen"]
+    total = len(overige)
+    print(f"  {total} overige moties, document-URLs ophalen...")
+    completed = 0
+
+    with ThreadPoolExecutor(max_workers=CONCURRENT_REQUESTS) as executor:
+        futures = {executor.submit(fetch_document_url, r): r for r in overige}
+        for future in as_completed(futures):
+            completed += 1
+            if completed % 100 == 0 or completed == total:
+                print(f"  Document-URLs opgehaald: {completed}/{total}")
 
     return records
 
@@ -267,6 +310,7 @@ def create_excel(records, filename):
         ("Medeondertekenaars", "medeondertekenaars", 30),
         ("Mede indienende partijen", "medeindiendepartijen", 25),
         ("URL", "url", 50),
+        ("Document", "document_url", 50),
     ]
 
     # Voeg url en afgedaan_api toe
@@ -311,6 +355,7 @@ def create_excel(records, filename):
         ("Toelichting", "toelichting", 50),
         ("Afdoening", "afdoening", 50),
         ("URL", "url", 50),
+        ("Document", "document_url", 50),
     ]
 
     # Sorteer op portefeuillehouder, dan datum
@@ -402,5 +447,8 @@ if __name__ == "__main__":
     print(f"  Afgedaan: {afgedaan}")
     print(f"  Nog open: {len(aangenomen) - afgedaan}")
 
-    print("\nStap 3: Excel genereren...")
+    print(f"\nStap 3: Document-URLs ophalen voor overige moties...")
+    fetch_document_urls_for_overige(records)
+
+    print("\nStap 4: Excel genereren...")
     create_excel(records, "moties.xlsx")
