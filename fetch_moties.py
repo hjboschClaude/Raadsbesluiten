@@ -266,10 +266,12 @@ def create_excel(records, filename):
         ("Datum afgedaan", "datecompleted", 16),
         ("Medeondertekenaars", "medeondertekenaars", 30),
         ("Mede indienende partijen", "medeindiendepartijen", 25),
+        ("URL", "url", 50),
     ]
 
-    # Voeg afgedaan_api toe op basis van datecompleted + uitslag
+    # Voeg url en afgedaan_api toe
     for r in records:
+        r["url"] = f"{BASE_URL}/Reports/Item/{r['DT_RowId']}"
         if r.get("uitslag") == "Aangenomen":
             r["afgedaan_api"] = "Ja" if r.get("datecompleted") else "Nee"
         else:
@@ -308,6 +310,7 @@ def create_excel(records, filename):
         ("Afdoeningsvoorstel", "afdoeningsvoorstel_aanwezig", 16),
         ("Toelichting", "toelichting", 50),
         ("Afdoening", "afdoening", 50),
+        ("URL", "url", 50),
     ]
 
     # Sorteer op portefeuillehouder, dan datum
