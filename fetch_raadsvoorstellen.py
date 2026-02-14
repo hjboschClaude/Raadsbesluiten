@@ -37,6 +37,7 @@ EXCEL_COLUMNS = [
     ("Hoofddocument URL", "hoofddocument_url", 50),
     ("Aantal bijlagen", "aantal_bijlagen", 15),
     ("Bijlagen", "bijlagen_tekst", 100),
+    ("Bijlage URLs", "bijlagen_urls", 100),
 ]
 
 
@@ -148,6 +149,9 @@ def fetch_item_documents(record):
             record["bijlagen_tekst"] = "\n".join(
                 f"{b['naam']} ({b['grootte']})" for b in bijlagen
             )
+            record["bijlagen_urls"] = "\n".join(
+                b["url"] for b in bijlagen
+            )
             record["bijlagen"] = bijlagen
 
             return record
@@ -219,9 +223,11 @@ def create_excel(records, filename):
             cell.alignment = cell_alignment
             cell.border = thin_border
 
-            # Maak URL-kolom klikbaar
+            # Maak URL-kolommen klikbaar
             if key == "hoofddocument_url" and value:
                 cell.hyperlink = value
+                cell.font = url_font
+            elif key == "bijlagen_urls" and value:
                 cell.font = url_font
 
     # Freeze top row
