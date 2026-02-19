@@ -60,6 +60,10 @@ def fetch_item_detail(record):
 
         bijlagen = parse_documents(html, "Bijlage(n)")
         record["aantal_bijlagen"] = len(bijlagen)
+        record["bijlagen_tekst"] = "\n".join(
+            f"{b['naam']} ({b['grootte']})" for b in bijlagen
+        )
+        record["bijlagen_urls"] = "\n".join(b["url"] for b in bijlagen)
         record["detail_ok"] = True
     except Exception as e:
         print(f"  FOUT detail {row_id}: {e}", file=sys.stderr)
@@ -67,6 +71,8 @@ def fetch_item_detail(record):
         record["hoofddocument_naam"] = ""
         record["hoofddocument_url"] = ""
         record["aantal_bijlagen"] = 0
+        record["bijlagen_tekst"] = ""
+        record["bijlagen_urls"] = ""
         record["detail_ok"] = False
     return record
 
@@ -81,6 +87,43 @@ def fetch_all_details(records):
             completed += 1
             if completed % 50 == 0 or completed == total:
                 print(f"  Details opgehaald: {completed}/{total}")
+    return records
+
+
+def fetch_bijlagen_for_record(record):
+    """Haal alleen bijlagedata op voor een bestaand record."""
+    row_id = record["DT_RowId"]
+    url = f"{BASE_URL}/Reports/Item/{row_id}"
+    try:
+        html = http_get_with_retry(url)
+        bijlagen = parse_documents(html, "Bijlage(n)")
+        record["aantal_bijlagen"] = len(bijlagen)
+        record["bijlagen_tekst"] = "\n".join(
+            f"{b['naam']} ({b['grootte']})" for b in bijlagen
+        )
+        record["bijlagen_urls"] = "\n".join(b["url"] for b in bijlagen)
+    except Exception as e:
+        print(f"  FOUT bijlagen {row_id}: {e}", file=sys.stderr)
+        record.setdefault("bijlagen_tekst", "")
+        record.setdefault("bijlagen_urls", "")
+    return record
+
+
+def fetch_missing_bijlagen(records):
+    """Haal bijlagedata op voor records waar die ontbreekt."""
+    missing = [r for r in records if "bijlagen_tekst" not in r]
+    if not missing:
+        print("  Bijlagedata al compleet voor alle records.")
+        return records
+    print(f"  Bijlagedata ophalen voor {len(missing)} records...")
+    completed = 0
+    total = len(missing)
+    with ThreadPoolExecutor(max_workers=5) as executor:
+        futures = {executor.submit(fetch_bijlagen_for_record, r): r for r in missing}
+        for future in as_completed(futures):
+            completed += 1
+            if completed % 50 == 0 or completed == total:
+                print(f"  Bijlagen opgehaald: {completed}/{total}")
     return records
 
 
@@ -605,6 +648,9 @@ EXCEL_COLUMNS = [
     ("Pagina's", "pdf_paginas", 10),
     ("PDF bestand", "pdf_bestand", 50),
     ("Hoofddocument URL", "hoofddocument_url", 50),
+    ("Aantal bijlagen", "aantal_bijlagen", 15),
+    ("Bijlagen", "bijlagen_tekst", 100),
+    ("Bijlage URLs", "bijlagen_urls", 100),
 ]
 
 
@@ -728,13 +774,18 @@ if __name__ == "__main__":
     if args.from_cache:
         records = load_cache()
         if records:
+            # Haal bijlagedata op als die ontbreekt in de cache
+            print("\nStap 1: Bijlagedata controleren en aanvullen...")
+            fetch_missing_bijlagen(records)
             # Herextraheer tekst uit bestaande PDFs
-            print("\nStap 1: Tekst extraheren uit bestaande PDFs...")
+            print("\nStap 2: Tekst extraheren uit bestaande PDFs...")
             extraheer_alle_teksten(records)
-            print("\nStap 2: Classificeren op basis van inhoud...")
+            print("\nStap 3: Classificeren op basis van inhoud...")
             classificeer_alle_records(records)
-            print("\nStap 3: Excel genereren...")
+            print("\nStap 4: Excel genereren...")
             create_excel(records, "raadsvoorstellen.xlsx")
+            # Cache bijwerken met bijlagedata
+            save_cache(records)
             sys.exit(0)
         else:
             print("Geen cache gevonden, volledige run wordt gestart.")
