@@ -10,14 +10,21 @@ Elk raadsvoorstel wordt langs twee dimensies geclassificeerd:
 1. **Besluittype** (procedureel): _Wat voor soort besluit is het?_
 2. **Beleidsdomein** (inhoudelijk): _Over welk beleidsonderwerp gaat het?_
 
-### Classificatiebronnen (in volgorde van prioriteit)
+### Classificatiebronnen
 
-| Prioriteit | Bron | Beschikbaarheid | Dekkingsgraad |
-|---|---|---|---|
-| 1 | **Gevraagd besluit** (PDF-inhoud) | 683 van 723 (94%) | Besluittype: 87.6% |
-| 2 | **PDF-tekst** (cluster, trefwoorden) | 722 van 723 (99.9%) | Beleidsdomein: 74% |
-| 3 | **Titel** van het raadsvoorstel | 723 van 723 (100%) | Besluittype: 12.4% |
-| 4 | **Beleidsveld** (metadata API) | 723 van 723 (100%) | Beleidsdomein: 26% (fallback) |
+**Besluittype** (procedureel):
+
+| Prioriteit | Bron | Dekkingsgraad |
+|---|---|---|
+| 1 | **Gevraagd besluit** (PDF-inhoud) | 633 (87.6%) |
+| 2 | **Titel** van het raadsvoorstel | 90 (12.4%) |
+
+**Beleidsdomein** (inhoudelijk):
+
+| Prioriteit | Bron | Rol |
+|---|---|---|
+| 1 | **Beleidsveld** (metadata API) | Bepaalt altijd de **hoofdcategorie** |
+| 2 | **PDF-tekst** (trefwoorden) | Verfijnt het **subdomein** binnen de hoofdcategorie |
 
 ---
 
@@ -104,39 +111,72 @@ Elk raadsvoorstel wordt langs twee dimensies geclassificeerd:
 
 ## 3. Dimensie 2: Beleidsdomein
 
-### 3.1 Hoofddomeinen
+### 3.1 Principe: beleidsveld is leidend
+
+Het **beleidsveld** uit de API-metadata bepaalt altijd de hoofdcategorie
+(beleidsdomein). PDF-inhoud wordt alleen gebruikt om het subdomein te verfijnen
+*binnen* de door het beleidsveld bepaalde hoofdcategorie. De inhoud kan de
+hoofdcategorie nooit overschrijven.
+
+### 3.2 Vaste mapping: beleidsveld → beleidsdomein
+
+| Beleidsveld (API) | Beleidsdomein | Default subdomein |
+|---|---|---|
+| Bouwen en Wonen | A. Ruimte & Wonen | A.1 Stedelijke ontwikkeling |
+| Buitenruimte | A. Ruimte & Wonen | A.3 Buitenruimte / Groen |
+| Projecten | A. Ruimte & Wonen | A.1 Stedelijke ontwikkeling |
+| Economie | B. Economie & Haven | B.2 Economisch beleid |
+| Haven | B. Economie & Haven | B.1 Haven |
+| Werk en Inkomen | B. Economie & Haven | B.3 Werk & Inkomen |
+| Mobiliteit | C. Mobiliteit | C.1 Verkeer |
+| Duurzaam | D. Duurzaamheid | D.1 Energie / Klimaat |
+| Onderwijs | E. Sociaal | E.1 Onderwijs |
+| Zorg | E. Sociaal | E.2 Zorg / Jeugd |
+| Jeugd | E. Sociaal | E.2 Zorg / Jeugd |
+| Cultuur | E. Sociaal | E.3 Cultuur |
+| Sport | E. Sociaal | E.4 Sport |
+| Armoedebestrijding | E. Sociaal | E.5 Welzijn / Armoede |
+| Welzijn | E. Sociaal | E.5 Welzijn / Armoede |
+| Samenleven | E. Sociaal | E.6 Samenleven / Wijken |
+| Wijken | E. Sociaal | E.6 Samenleven / Wijken |
+| Gebieden | E. Sociaal | E.6 Samenleven / Wijken |
+| Veiligheid | F. Veiligheid | F.1 Openbare orde / Handhaving |
+| Bestuur | G. Bestuur & Financiën | G.3 Raadsorganisatie |
+| Organisatie | G. Bestuur & Financiën | G.2 Gemeentelijke organisatie |
+| PRESIDIUM | G. Bestuur & Financiën | G.3 Raadsorganisatie |
+| cor | G. Bestuur & Financiën | G.4 Interbestuurlijk |
+| Financien* | G. Bestuur & Financiën | G.1 Gemeentefinanciën |
+
+\* Financiën kent 4 spelvarianten: `Financien`, `Financiën`, `Financïen`,
+`Financien-inactief`. Alle worden genormaliseerd naar G.1.
+
+### 3.3 Hoofddomeinen (verdeling)
 
 | Code | Domein | Aantal | Percentage |
 |---|---|---|---|
-| A | Ruimte & Wonen | 306 | 42.3% |
-| B | Economie & Haven | 84 | 11.6% |
-| C | Mobiliteit | 31 | 4.3% |
-| D | Duurzaamheid | 46 | 6.4% |
-| E | Sociaal | 124 | 17.2% |
-| F | Veiligheid | 18 | 2.5% |
-| G | Bestuur & Financiën | 114 | 15.8% |
+| A | Ruimte & Wonen | 360 | 49.8% |
+| B | Economie & Haven | 51 | 7.1% |
+| C | Mobiliteit | 26 | 3.6% |
+| D | Duurzaamheid | 13 | 1.8% |
+| E | Sociaal | 96 | 13.3% |
+| F | Veiligheid | 13 | 1.8% |
+| G | Bestuur & Financiën | 164 | 22.7% |
 
-### 3.2 Classificatiemethode beleidsdomein
+### 3.4 Subdomein-verfijning via PDF-inhoud
 
-**Prioriteit 1 - Cluster uit PDF:**
-De PDF bevat soms een "Cluster:" veld dat direct naar een domein mapt:
+Na bepaling van de hoofdcategorie worden trefwoorden in de eerste 5000
+tekens van de PDF-tekst gematcht om het subdomein te verfijnen. Er zijn
+minimaal 2 hits vereist. De trefwoorden zijn gegroepeerd per hoofddomein,
+zodat ze alleen *binnen* het beleidsveld-bepaalde domein zoeken.
 
-| Cluster (PDF) | Beleidsdomein |
-|---|---|
-| Stadsontwikkeling | A. Ruimte & Wonen |
-| Stadsbeheer | A. Ruimte & Wonen |
-| Maatschappelijke Ontwikkeling | E. Sociaal |
-| Werk en Inkomen | B. Economie & Haven |
-| Dienstverlening | G. Bestuur & Financiën |
-| Bestuurs- en Concernondersteuning | G. Bestuur & Financiën |
+Voorbeeld voor A. Ruimte & Wonen:
+- `bestemmingsplan`, `omgevingsplan`, `grondexploitatie` → A.1 Stedelijke ontwikkeling
+- `woning`, `huurwoning`, `woonvisie`, `huisvesting` → A.2 Woonbeleid
+- `groen`, `bomen`, `buitenruimte` → A.3 Buitenruimte / Groen
+- `monument`, `erfgoed` → A.4 Monumenten / Erfgoed
 
-**Prioriteit 2 - Trefwoorden in PDF-tekst (eerste 5000 tekens):**
-Minimaal 2 trefwoord-hits vereist. Zie de domein_patterns in de code voor
-de volledige lijst per subdomein.
-
-**Prioriteit 3 - Titel + beleidsveld (metadata):**
-Fallback op basis van het oorspronkelijke beleidsveld uit de API,
-met correctie van inconsistente spelling.
+Als geen enkel subdomein ≥ 2 hits haalt, wordt het default subdomein
+uit de beleidsveld-mapping gebruikt.
 
 ---
 
@@ -202,17 +242,32 @@ gecontroleerd, en uitsluitend in combinatie met nota-trefwoorden.
 maar is veilig omdat `bestemmingsplan` en `omgevingsplan` eerder in de keten
 worden afgevangen.
 
-### 4.5 Beleidsveld uit de API is onbetrouwbaar
+### 4.5 Beleidsveld als leidende bron
 
-Het oorspronkelijke beleidsveld kent problemen:
-- **Inconsistente spelling**: 4 varianten van "Financiën" (Financien, Financieen, etc.)
-- **Te brede categorieën**: "Bouwen en Wonen" bevat 43% van alle records
-- **Ontbrekende waarden**: sommige records hebben geen beleidsveld
+Het beleidsveld uit de API is leidend voor de beleidsdomein-classificatie,
+ondanks bekende beperkingen:
+- **Inconsistente spelling**: 4 varianten van "Financiën" worden genormaliseerd
+- **Brede categorieën**: "Bouwen en Wonen" bevat 43% van alle records — de
+  subdomein-verfijning via PDF-inhoud differentieert binnen deze categorie
+- **27 unieke waarden** worden via een vaste mapping omgezet naar 7 hoofddomeinen
 
-Daarom wordt het beleidsveld alleen als laatste fallback gebruikt, na correctie
-via een mapping-tabel.
+De eerdere aanpak (inhoud-gebaseerd met beleidsveld als fallback) leidde tot
+194 records die in een verkeerd hoofddomein terechtkwamen. Bijvoorbeeld
+bestemmingsplannen met energietrefwoorden die bij "Duurzaamheid" werden
+geclassificeerd in plaats van bij "Ruimte & Wonen" (conform hun beleidsveld
+"Bouwen en Wonen").
 
-### 4.6 Eén PDF kon niet gedownload worden
+### 4.6 Cluster uit PDF is geen betrouwbare detailbron
+
+Het "Cluster:"-veld in de PDF geeft de gemeentelijke organisatie-eenheid aan
+(bijv. "Maatschappelijke Ontwikkeling", "Stadsontwikkeling"), niet het
+beleidsdomein. Het cluster is te grof voor subdomein-verfijning: het cluster
+"Maatschappelijke Ontwikkeling" omvat Zorg, Onderwijs, Cultuur, Sport én
+Welzijn. Gebruik van het cluster als detailbron leidde tot 28 foute
+overschrijvingen (bijv. Cultuur-records die als Zorg werden geclassificeerd).
+Het cluster wordt daarom niet meer gebruikt voor classificatie.
+
+### 4.7 Eén PDF kon niet gedownload worden
 
 Record `25bb001137` heeft geen hoofddocument in iBabs. Dit is het enige record
 (1 van 723) waarvoor geen PDF beschikbaar is. Het wordt puur op titel
@@ -226,18 +281,17 @@ geclassificeerd.
 | Bron | Aantal | Percentage |
 |---|---|---|
 | Inhoud (gevraagd besluit) | 633 | 87.6% |
-| Titel | 90 | 12.4% |
-| Niet geclassificeerd | 0 | 0% |
+| Titel (fallback) | 90 | 12.4% |
 | **Totaal** | **723** | **100%** |
 
 ### Beleidsdomein
-| Bron | Aantal | Percentage |
+| Component | Bron | Toelichting |
 |---|---|---|
-| Inhoud (PDF-tekst + cluster) | 535 | 74.0% |
-| Titel + beleidsveld (fallback) | 188 | 26.0% |
-| **Totaal** | **723** | **100%** |
+| Hoofdcategorie | Beleidsveld (API) | Altijd leidend, 100% dekking |
+| Subdomein | PDF-tekst (trefwoorden) | Verfijnt binnen hoofdcategorie |
+| Subdomein (fallback) | Beleidsveld-default | Als PDF < 2 trefwoord-hits |
 
-### Iteratiegeschiedenis
+### Iteratiegeschiedenis besluittype
 | Versie | Inhoud | Titel | Niet geclassificeerd |
 |---|---|---|---|
 | v1 (alleen titel) | - | 500 (69%) | 223 (31%) |
@@ -245,6 +299,12 @@ geclassificeerd.
 | v3 (inhoud + titel) | 486 (67%) | 173 (24%) | 64 (9%) |
 | v4 (verbeterde patronen) | 584 (81%) | 111 (15%) | 28 (4%) |
 | **v5 (huidig)** | **633 (87.6%)** | **90 (12.4%)** | **0 (0%)** |
+
+### Iteratiegeschiedenis beleidsdomein
+| Versie | Aanpak | Resultaat |
+|---|---|---|
+| v1-v5 | Inhoud leidend, beleidsveld fallback | 194 records in verkeerd hoofddomein |
+| **v6 (huidig)** | **Beleidsveld leidend, inhoud verfijnt** | **100% correct hoofddomein** |
 
 ---
 
@@ -265,10 +325,9 @@ geclassificeerd.
 | Functie | Bestand | Doel |
 |---|---|---|
 | `classificeer_besluittype_inhoud()` | `download_raadsvoorstellen.py` | Inhoud-gebaseerde besluittype-classificatie |
-| `classificeer_beleidsdomein_inhoud()` | `download_raadsvoorstellen.py` | Inhoud-gebaseerde beleidsdomein-classificatie |
-| `classificeer_besluittype()` | `fetch_raadsvoorstellen.py` | Titel-gebaseerde besluittype-classificatie |
-| `classificeer_beleidsdomein()` | `fetch_raadsvoorstellen.py` | Titel+beleidsveld beleidsdomein-classificatie |
-| `classificeer_alle_records()` | `download_raadsvoorstellen.py` | Orchestreert alle classificatie met fallback |
+| `classificeer_beleidsdomein_inhoud()` | `download_raadsvoorstellen.py` | Beleidsveld → hoofddomein + inhoud → subdomein |
+| `classificeer_besluittype()` | `fetch_raadsvoorstellen.py` | Titel-gebaseerde besluittype-classificatie (fallback) |
+| `classificeer_alle_records()` | `download_raadsvoorstellen.py` | Orchestreert alle classificatie |
 
 ### API-gegevens
 
