@@ -498,95 +498,153 @@ def classificeer_besluittype_inhoud(gevraagd_besluit, titel):
 
 
 def classificeer_beleidsdomein_inhoud(tekst, cluster, titel, beleidsveld):
-    """Classificeer beleidsdomein op basis van volledige PDF-tekst en cluster.
+    """Classificeer beleidsdomein: beleidsveld is leidend, inhoud verfijnt detail.
 
-    Returns (hoofddomein, subdomein) of None.
+    Het beleidsveld uit de API bepaalt altijd de hoofdcategorie.
+    PDF-inhoud (cluster + trefwoorden) wordt gebruikt om het subdomein
+    te verfijnen binnen die hoofdcategorie.
+
+    Returns (hoofddomein, subdomein).
     """
-    # Gebruik cluster-veld als sterk signaal
-    cl = (cluster or "").lower()
-    cluster_mapping = {
-        "stadsontwikkeling": ("A. Ruimte & Wonen", "A.1 Stedelijke ontwikkeling"),
-        "stadsbeheer": ("A. Ruimte & Wonen", "A.3 Buitenruimte / Groen"),
-        "maatschappelijke ontwikkeling": ("E. Sociaal", "E.2 Zorg / Jeugd"),
-        "werk en inkomen": ("B. Economie & Haven", "B.3 Werk & Inkomen"),
-        "dienstverlening": ("G. Bestuur & Financiën", "G.2 Gemeentelijke organisatie"),
-        "bestuurs- en concernondersteuning": ("G. Bestuur & Financiën", "G.2 Gemeentelijke organisatie"),
+    bv = (beleidsveld or "").lower().strip()
+
+    # --- Stap 1: beleidsveld -> hoofddomein + default subdomein ---
+    beleidsveld_mapping = {
+        "bouwen en wonen":     ("A. Ruimte & Wonen", "A.1 Stedelijke ontwikkeling"),
+        "buitenruimte":        ("A. Ruimte & Wonen", "A.3 Buitenruimte / Groen"),
+        "projecten":           ("A. Ruimte & Wonen", "A.1 Stedelijke ontwikkeling"),
+        "economie":            ("B. Economie & Haven", "B.2 Economisch beleid"),
+        "haven":               ("B. Economie & Haven", "B.1 Haven"),
+        "werk en inkomen":     ("B. Economie & Haven", "B.3 Werk & Inkomen"),
+        "mobiliteit":          ("C. Mobiliteit", "C.1 Verkeer"),
+        "duurzaam":            ("D. Duurzaamheid", "D.1 Energie / Klimaat"),
+        "onderwijs":           ("E. Sociaal", "E.1 Onderwijs"),
+        "zorg":                ("E. Sociaal", "E.2 Zorg / Jeugd"),
+        "jeugd":               ("E. Sociaal", "E.2 Zorg / Jeugd"),
+        "cultuur":             ("E. Sociaal", "E.3 Cultuur"),
+        "sport":               ("E. Sociaal", "E.4 Sport"),
+        "armoedebestrijding":  ("E. Sociaal", "E.5 Welzijn / Armoede"),
+        "welzijn":             ("E. Sociaal", "E.5 Welzijn / Armoede"),
+        "samenleven":          ("E. Sociaal", "E.6 Samenleven / Wijken"),
+        "wijken":              ("E. Sociaal", "E.6 Samenleven / Wijken"),
+        "gebieden":            ("E. Sociaal", "E.6 Samenleven / Wijken"),
+        "veiligheid":          ("F. Veiligheid", "F.1 Openbare orde / Handhaving"),
+        "bestuur":             ("G. Bestuur & Financiën", "G.3 Raadsorganisatie"),
+        "organisatie":         ("G. Bestuur & Financiën", "G.2 Gemeentelijke organisatie"),
+        "presidium":           ("G. Bestuur & Financiën", "G.3 Raadsorganisatie"),
+        "cor":                 ("G. Bestuur & Financiën", "G.4 Interbestuurlijk"),
     }
-    for key, val in cluster_mapping.items():
-        if key in cl:
-            return val
+    # Normaliseer financiën varianten
+    if bv in ("financien-inactief", "financïen", "financien", "financiën"):
+        hoofddomein = "G. Bestuur & Financiën"
+        default_detail = "G.1 Gemeentefinanciën"
+    elif bv in beleidsveld_mapping:
+        hoofddomein, default_detail = beleidsveld_mapping[bv]
+    else:
+        hoofddomein = "G. Bestuur & Financiën"
+        default_detail = "G.1 Gemeentefinanciën"
 
-    if not tekst:
-        return None
+    # --- Stap 2: verfijn subdomein op basis van inhoud ---
+    # Subdomein-patronen gegroepeerd per hoofddomein
+    subdomein_patterns = {
+        "A. Ruimte & Wonen": [
+            (["bestemmingsplan", "omgevingsplan", "grondexploitatie", "welstand",
+              "stedenbouwkundig", "gebiedsontwikkeling", "bouwplan", "plangebied"],
+             "A.1 Stedelijke ontwikkeling"),
+            (["woning", "huurwoning", "woonvisie", "huisvesting", "woningbouw",
+              "flexwonen", "sociale huur", "koopwoning"],
+             "A.2 Woonbeleid"),
+            (["groen", "bomen", "buitenruimte", "openbare ruimte", "begraafplaats",
+              "speeltuin", "stadspark"],
+             "A.3 Buitenruimte / Groen"),
+            (["monument", "erfgoed", "beschermd stadsgezicht", "restauratie",
+              "rijksmonument"],
+             "A.4 Monumenten / Erfgoed"),
+        ],
+        "B. Economie & Haven": [
+            (["haven", "havengebied", "havenbedrijf", "havenmeester", "scheepvaart",
+              "havenverordening"],
+             "B.1 Haven"),
+            (["economie", "ondernemers", "bedrijventerrein", "horeca", "winkelgebied",
+              "economisch", "investering", "vestigingsklimaat", "mkb"],
+             "B.2 Economisch beleid"),
+            (["werk", "inkomen", "uitkering", "participatiewet", "bijstand",
+              "arbeidsmarkt"],
+             "B.3 Werk & Inkomen"),
+        ],
+        "C. Mobiliteit": [
+            (["mobiliteit", "verkeer", "fiets", "voetganger", "weginfrastructuur",
+              "bereikbaarheid", "verkeersplan"],
+             "C.1 Verkeer"),
+            (["openbaar vervoer", "metro", "tram", "bus", "ret"],
+             "C.2 Openbaar vervoer"),
+            (["parkeer", "parkeergarage", "parkeernorm", "autoparkeren"],
+             "C.3 Parkeren"),
+        ],
+        "D. Duurzaamheid": [
+            (["klimaat", "energie", "warmte", "duurzaam", "co2", "circulair",
+              "energietransitie", "windenergie", "zonnepanelen"],
+             "D.1 Energie / Klimaat"),
+            (["water", "riool", "riolering", "wateroverlast", "waterkwaliteit",
+              "klimaatadaptatie"],
+             "D.2 Water / Klimaatadaptatie"),
+        ],
+        "E. Sociaal": [
+            (["onderwijs", "school", "boor", "leerling", "leraar", "kinderopvang",
+              "onderwijshuisvesting"],
+             "E.1 Onderwijs"),
+            (["zorg", "jeugdhulp", "wmo", "ggz", "beschermd wonen",
+              "maatschappelijke ondersteuning", "jeugdzorg"],
+             "E.2 Zorg / Jeugd"),
+            (["cultuur", "museum", "theater", "bibliotheek", "kunst", "festival",
+              "cultureel", "kunstenaar"],
+             "E.3 Cultuur"),
+            (["sport", "stadion", "zwembad", "sporthal", "voetbal", "sportclub",
+              "sportaccommodatie"],
+             "E.4 Sport"),
+            (["armoede", "schuld", "minima", "rotterdampas", "armoedebeleid",
+              "schuldhulp"],
+             "E.5 Welzijn / Armoede"),
+            (["wijk", "wijkraad", "samenleven", "integratie", "buurt",
+              "gebiedscommissie", "bewonersparticipatie"],
+             "E.6 Samenleven / Wijken"),
+        ],
+        "F. Veiligheid": [
+            (["veiligheid", "camera", "politie", "handhaving", "toezicht",
+              "ondermijning", "criminaliteit"],
+             "F.1 Openbare orde / Handhaving"),
+        ],
+        "G. Bestuur & Financiën": [
+            (["begroting", "jaarrekening", "jaarstukken", "belasting", "tarieven",
+              "krediet", "subsidie", "investering", "financ"],
+             "G.1 Gemeentefinanciën"),
+            (["organisatie", "ambtelijk", "dienstverlening", "bedrijfsvoering",
+              "personeelsbeleid"],
+             "G.2 Gemeentelijke organisatie"),
+            (["raadscommissie", "griffie", "presidium", "raadslid", "raadsvergadering",
+              "commissie", "benoeming"],
+             "G.3 Raadsorganisatie"),
+            (["gemeenschappelijke regeling", "regio", "metropoolregio",
+              "interbestuurlijk", "samenwerkingsverband"],
+             "G.4 Interbestuurlijk"),
+        ],
+    }
 
-    t = tekst[:5000].lower()  # Analyseer eerste 5000 tekens
+    # Zoek trefwoorden in PDF-tekst voor detail-verfijning
+    if tekst:
+        t = tekst[:5000].lower()
+        patterns = subdomein_patterns.get(hoofddomein, [])
+        best_score = 0
+        best_detail = None
+        for keywords, detail in patterns:
+            score = sum(1 for kw in keywords if kw in t)
+            if score > best_score:
+                best_score = score
+                best_detail = detail
+        if best_score >= 2:
+            return (hoofddomein, best_detail)
 
-    # Zoek domein-specifieke trefwoorden in de inhoud
-    domein_patterns = [
-        (["bestemmingsplan", "omgevingsplan", "grondexploitatie", "welstand",
-          "stedenbouwkundig", "gebiedsontwikkeling", "bouwplan", "plangebied"],
-         ("A. Ruimte & Wonen", "A.1 Stedelijke ontwikkeling")),
-        (["woning", "huurwoning", "woonvisie", "huisvesting", "woningbouw",
-          "flexwonen", "sociale huur", "koopwoning"],
-         ("A. Ruimte & Wonen", "A.2 Woonbeleid")),
-        (["groen", "bomen", "buitenruimte", "openbare ruimte", "begraafplaats",
-          "speeltuin", "stadspark"],
-         ("A. Ruimte & Wonen", "A.3 Buitenruimte / Groen")),
-        (["monument", "erfgoed", "beschermd stadsgezicht", "restauratie",
-          "rijksmonument"],
-         ("A. Ruimte & Wonen", "A.4 Monumenten / Erfgoed")),
-        (["haven", "havengebied", "havenbedrijf", "havenmeester", "scheepvaart"],
-         ("B. Economie & Haven", "B.1 Haven")),
-        (["economie", "ondernemers", "bedrijventerrein", "horeca", "winkelgebied",
-          "economisch", "investering", "vestigingsklimaat", "mkb"],
-         ("B. Economie & Haven", "B.2 Economisch beleid")),
-        (["mobiliteit", "verkeer", "fiets", "voetganger", "weginfrastructuur",
-          "bereikbaarheid", "verkeersplan"],
-         ("C. Mobiliteit", "C.1 Verkeer")),
-        (["parkeer", "parkeergarage", "parkeernorm", "autoparkeren"],
-         ("C. Mobiliteit", "C.3 Parkeren")),
-        (["klimaat", "energie", "warmte", "duurzaam", "co2", "circulair",
-          "energietransitie", "windenergie", "zonnepanelen"],
-         ("D. Duurzaamheid", "D.1 Energie / Klimaat")),
-        (["water", "riool", "riolering", "wateroverlast", "waterkwaliteit",
-          "klimaatadaptatie"],
-         ("D. Duurzaamheid", "D.2 Water / Klimaatadaptatie")),
-        (["onderwijs", "school", "boor", "leerling", "leraar", "kinderopvang",
-          "onderwijshuisvesting"],
-         ("E. Sociaal", "E.1 Onderwijs")),
-        (["zorg", "jeugdhulp", "wmo", "ggz", "beschermd wonen",
-          "maatschappelijke ondersteuning", "jeugdzorg"],
-         ("E. Sociaal", "E.2 Zorg / Jeugd")),
-        (["cultuur", "museum", "theater", "bibliotheek", "kunst", "festival",
-          "cultureel", "kunstenaar"],
-         ("E. Sociaal", "E.3 Cultuur")),
-        (["sport", "stadion", "zwembad", "sporthal", "voetbal", "sportclub",
-          "sportaccommodatie"],
-         ("E. Sociaal", "E.4 Sport")),
-        (["armoede", "schuld", "minima", "rotterdampas", "armoedebeleid",
-          "schuldhulp"],
-         ("E. Sociaal", "E.5 Welzijn / Armoede")),
-        (["wijk", "wijkraad", "samenleven", "integratie", "buurt",
-          "gebiedscommissie", "bewonersparticipatie"],
-         ("E. Sociaal", "E.6 Samenleven / Wijken")),
-        (["veiligheid", "camera", "politie", "handhaving", "toezicht",
-          "ondermijning", "criminaliteit"],
-         ("F. Veiligheid", "F.1 Openbare orde / Handhaving")),
-    ]
-
-    # Tel hits per domein
-    best_score = 0
-    best_domein = None
-    for keywords, domein in domein_patterns:
-        score = sum(1 for kw in keywords if kw in t)
-        if score > best_score:
-            best_score = score
-            best_domein = domein
-
-    if best_score >= 2:  # Minimaal 2 trefwoorden
-        return best_domein
-
-    return None
+    return (hoofddomein, default_detail)
 
 
 def classificeer_alle_records(records):
@@ -612,18 +670,12 @@ def classificeer_alle_records(records):
             else:
                 r["bt_bron"] = "titel"
 
-        # Beleidsdomein: probeer inhoud, dan titel, dan beleidsveld
-        bd_inhoud = classificeer_beleidsdomein_inhoud(
+        # Beleidsdomein: beleidsveld is leidend, inhoud verfijnt detail
+        bd_hoofd, bd_detail = classificeer_beleidsdomein_inhoud(
             pdf_tekst, pdf_cluster, title, beleidsveld)
-        bd_titel_hoofd, bd_titel_detail = classificeer_beleidsdomein(title, beleidsveld)
-
-        if bd_inhoud:
-            r["beleidsdomein"], r["beleidsdomein_detail"] = bd_inhoud
-            r["bd_bron"] = "inhoud"
-        else:
-            r["beleidsdomein"] = bd_titel_hoofd
-            r["beleidsdomein_detail"] = bd_titel_detail
-            r["bd_bron"] = "titel/beleidsveld"
+        r["beleidsdomein"] = bd_hoofd
+        r["beleidsdomein_detail"] = bd_detail
+        r["bd_bron"] = "beleidsveld"
 
     return records
 
@@ -644,7 +696,6 @@ EXCEL_COLUMNS = [
     ("Datum ontvangen", "registrationdate", 16),
     ("Portefeuillehouder", "portefeuillehouder", 30),
     ("Classificatiebron BT", "bt_bron", 14),
-    ("Classificatiebron BD", "bd_bron", 16),
     ("Pagina's", "pdf_paginas", 10),
     ("PDF bestand", "pdf_bestand", 50),
     ("Hoofddocument URL", "hoofddocument_url", 50),
@@ -704,8 +755,6 @@ def create_excel(records, filename):
     bt_inhoud = sum(1 for r in records if r.get("bt_bron") == "inhoud")
     bt_titel = sum(1 for r in records if r.get("bt_bron") == "titel")
     bt_geen = sum(1 for r in records if r.get("bt_bron") == "geen")
-    bd_inhoud = sum(1 for r in records if r.get("bd_bron") == "inhoud")
-    bd_fallback = sum(1 for r in records if r.get("bd_bron") == "titel/beleidsveld")
 
     metrieken = [
         ("Totaal raadsvoorstellen", totaal),
@@ -716,8 +765,9 @@ def create_excel(records, filename):
         ("Besluittype - op basis van titel", f"{bt_titel} ({round(bt_titel/totaal*100)}%)"),
         ("Besluittype - niet geclassificeerd", f"{bt_geen} ({round(bt_geen/totaal*100)}%)"),
         ("", ""),
-        ("Beleidsdomein - op basis van inhoud", f"{bd_inhoud} ({round(bd_inhoud/totaal*100)}%)"),
-        ("Beleidsdomein - op basis van titel/beleidsveld", f"{bd_fallback} ({round(bd_fallback/totaal*100)}%)"),
+        ("Beleidsdomein - bron", "Beleidsveld (origineel) is leidend"),
+        ("Beleidsdomein - detail verfijnd met inhoud",
+         f"{sum(1 for r in records if r.get('pdf_tekst') or r.get('pdf_cluster'))}/{totaal}"),
     ]
     for row_idx, (label, val) in enumerate(metrieken, 2):
         ws8.cell(row=row_idx, column=1, value=label).border = styles["thin_border"]
@@ -733,7 +783,7 @@ def create_excel(records, filename):
     print(f"  PDF download: {pdf_ok}/{totaal}")
     print(f"  Gevraagd besluit gevonden: {gb_ok}/{totaal}")
     print(f"  Classificatie besluittype: inhoud={bt_inhoud}, titel={bt_titel}, geen={bt_geen}")
-    print(f"  Classificatie beleidsdomein: inhoud={bd_inhoud}, fallback={bd_fallback}")
+    print(f"  Beleidsdomein: beleidsveld leidend, detail verfijnd met inhoud")
 
 
 # --- Cache ---
