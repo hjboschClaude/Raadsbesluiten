@@ -263,65 +263,193 @@ def classificeer_besluittype_inhoud(gevraagd_besluit, titel):
     """Classificeer besluittype op basis van 'Gevraagd besluit' tekst.
 
     Returns (hoofdcategorie, subcategorie) of None als niet bepaald.
+    Probeert eerst inhoud-classificatie, daarna titel-gebaseerde fallbacks.
     """
-    if not gevraagd_besluit:
-        return None
+    # Normaliseer: lowercase, collapse whitespace (PDF extractie geeft soms
+    # merged/split woorden: "vast testellen", "co ördinatieregeling", etc.)
+    gb = re.sub(r'\s+', ' ', (gevraagd_besluit or "").lower().strip())
+    tl = re.sub(r'\s+', ' ', titel.lower().strip())
 
-    gb = gevraagd_besluit.lower()
+    # Helper: check of "vaststellen" in enige vorm voorkomt in gb
+    heeft_vaststellen = bool(
+        gb and re.search(r'vast\s*(?:te\s*)?stellen', gb))
 
-    # Bestemmingsplan / omgevingsplan
-    if "bestemmingsplan" in gb or "omgevingsplan" in gb:
+    # --- Inhoud-gebaseerde classificatie (alleen als gb niet leeg) ---
+    if gb:
+        # Bestemmingsplan / omgevingsplan
+        if "bestemmingsplan" in gb or "omgevingsplan" in gb:
+            if "zienswijze" in gb:
+                return ("1. Ruimtelijk", "1.1 Bestemmingsplan (zienswijze)")
+            return ("1. Ruimtelijk", "1.1 Bestemmingsplan (vaststelling)")
+
+        # Grondexploitatie
+        if "grondexploitatie" in gb:
+            if "openen" in gb or "open te stellen" in gb:
+                return ("1. Ruimtelijk", "1.3 Grondexploitatie (openen)")
+            if "herzie" in gb:
+                return ("1. Ruimtelijk", "1.3 Grondexploitatie (herzien)")
+            return ("1. Ruimtelijk", "1.3 Grondexploitatie")
+
+        # Coördinatieregeling (art. 3.30 Wro)
+        # PDF geeft soms "co ördinatieregeling" met extra spatie
+        if re.search(r'co\s*[öo]rdinatieregeling', gb):
+            return ("1. Ruimtelijk", "1.8 Coördinatieregeling")
+
+        # Verordening
+        if "verordening" in gb:
+            if "wijzig" in gb:
+                return ("2. Regelgeving", "2.1 Verordening (wijziging)")
+            return ("2. Regelgeving", "2.1 Verordening (vaststelling)")
+
+        # Financieel
+        if any(w in gb for w in [
+                "krediet", "budget beschikbaar", "middelen beschikbaar"]):
+            return ("3. Financieel", "3.4 Krediet")
+        if "begroting" in gb:
+            return ("3. Financieel", "3.1 Begroting")
+        if "jaarrekening" in gb or "jaarstukken" in gb:
+            return ("3. Financieel", "3.2 Jaarrekening / Jaarstukken")
+        if "subsidie" in gb:
+            return ("3. Financieel", "3.5 Subsidie")
+        if any(w in gb for w in ["belasting", "tarieven", "leges"]):
+            return ("3. Financieel", "3.3 Belasting / Tarieven")
+
+        # Bestuurlijk - benoeming
+        if any(w in gb for w in ["te benoemen", "benoemen", "herbenoemen"]):
+            return ("4. Bestuurlijk", "4.1 Benoeming / Aanwijzing")
+
+        # Gemeenschappelijke regeling
+        if "zienswijze" in gb and re.search(
+                r'gemeenschappelijke\s+regeling', gb):
+            return ("4. Bestuurlijk", "4.2 Gem. regeling (zienswijze)")
+        if re.search(r'gemeenschappelijke\s+regeling', gb):
+            return ("4. Bestuurlijk", "4.2 Gemeenschappelijke regeling")
         if "zienswijze" in gb:
-            return ("1. Ruimtelijk", "1.1 Bestemmingsplan (zienswijze)")
-        return ("1. Ruimtelijk", "1.1 Bestemmingsplan (vaststelling)")
+            return ("4. Bestuurlijk", "4.3 Zienswijze")
 
-    # Grondexploitatie
-    if "grondexploitatie" in gb:
-        if "openen" in gb or "open te stellen" in gb:
-            return ("1. Ruimtelijk", "1.3 Grondexploitatie (openen)")
-        if "herzie" in gb:
-            return ("1. Ruimtelijk", "1.3 Grondexploitatie (herzien)")
-        return ("1. Ruimtelijk", "1.3 Grondexploitatie")
+        # Controle
+        if "geheimhouding" in gb:
+            return ("5. Controle", "5.2 Geheimhouding")
 
-    # Verordening
-    if "verordening" in gb:
-        if "wijzig" in gb:
-            return ("2. Regelgeving", "2.1 Verordening (wijziging)")
-        return ("2. Regelgeving", "2.1 Verordening (vaststelling)")
+        # Welstand
+        if "welstand" in gb:
+            return ("1. Ruimtelijk", "1.4 Welstandsnota")
 
-    # Financieel
-    if any(w in gb for w in ["krediet", "budget beschikbaar", "middelen beschikbaar"]):
-        return ("3. Financieel", "3.4 Krediet")
-    if "begroting" in gb:
-        return ("3. Financieel", "3.1 Begroting")
-    if "jaarrekening" in gb or "jaarstukken" in gb:
-        return ("3. Financieel", "3.2 Jaarrekening / Jaarstukken")
-    if "subsidie" in gb:
-        return ("3. Financieel", "3.5 Subsidie")
-    if any(w in gb for w in ["belasting", "tarieven", "leges"]):
-        return ("3. Financieel", "3.3 Belasting / Tarieven")
+        # Ambitiedocument
+        if "ambitiedocument" in gb:
+            return ("1. Ruimtelijk", "1.2 Ambitiedocument")
 
-    # Bestuurlijk
-    if any(w in gb for w in ["te benoemen", "benoemen", "herbenoemen"]):
-        return ("4. Bestuurlijk", "4.1 Benoeming / Aanwijzing")
-    if "zienswijze" in gb and "gemeenschappelijke regeling" in gb:
-        return ("4. Bestuurlijk", "4.2 Gem. regeling (zienswijze)")
-    if "gemeenschappelijke regeling" in gb:
-        return ("4. Bestuurlijk", "4.2 Gemeenschappelijke regeling")
-    if "zienswijze" in gb:
-        return ("4. Bestuurlijk", "4.3 Zienswijze")
+        # Wegonttrekking
+        if "openbaar verkeer" in gb and "onttrekk" in gb:
+            return ("1. Ruimtelijk", "1.7 Wegonttrekking")
 
-    # Controle
-    if "geheimhouding" in gb:
-        return ("5. Controle", "5.2 Geheimhouding")
+        # Voorkeursrecht (Wet voorkeursrecht gemeenten)
+        if "voorkeursrecht" in gb:
+            return ("1. Ruimtelijk", "1.9 Voorkeursrecht (WVG)")
 
-    # Welstand
-    if "welstand" in gb:
-        return ("1. Ruimtelijk", "1.4 Welstandsnota")
+        # VVGB / Adviesrecht / BOPA
+        if ("adviesrecht" in gb or "verklaring van geen bedenkingen" in gb
+                or "vvgb" in gb
+                or ("omgevingsvergunning" in gb and "buitenplanse" in gb)
+                or ("bindend advies" in gb and "omgevingsvergunning" in gb)):
+            return ("1. Ruimtelijk", "1.5 VVGB / Adviesrecht")
 
-    # Ambitiedocument
-    if "ambitiedocument" in gb:
-        return ("1. Ruimtelijk", "1.2 Ambitiedocument")
+        # Erfpacht
+        if "erfpacht" in gb:
+            return ("1. Ruimtelijk", "1.6 Erfpacht")
+
+        # Bijdrageregeling Ontplofbare Oorlogsresten / kostenverhaal
+        if "oorlogsresten" in gb or "ontplofbare" in gb:
+            return ("3. Financieel", "3.7 Declaratie / Kostenverhaal")
+
+        # Bestemmingsreserve / reserve omzetten
+        if "bestemmingsreserve" in gb:
+            return ("3. Financieel", "3.4 Krediet")
+
+        # Grondprijzen
+        if "grondprijs" in gb or "grondprijzen" in gb:
+            return ("3. Financieel", "3.4 Krediet")
+
+        # Huren kostendekkendheid
+        if "kostendekkend" in gb and "huren" in gb:
+            return ("3. Financieel", "3.4 Krediet")
+
+        # Investering / Eneco-middelen / fonds instellen
+        if any(w in gb for w in [
+                "investering", "eneco-middelen", "investeringsvoorstel"]):
+            return ("3. Financieel", "3.6 Investering")
+        if "fonds" in gb and "instellen" in gb:
+            return ("3. Financieel", "3.6 Investering")
+
+        # Accountantscontrole
+        if "accountant" in gb or "accountantscontrole" in gb:
+            return ("5. Controle", "5.4 Rechtmatigheid / Accountant")
+
+        # Rekenkamerrapport
+        if "rekenkamer" in gb:
+            return ("5. Controle", "5.1 Rekenkamerrapport")
+
+        # Instelling commissie / adviesorgaan (art. 84 Gemeentewet)
+        if ("instellen" in gb or "instelling" in gb
+                or "inrichting" in gb) and (
+                "commissie" in gb or "adviescommissie" in gb
+                or "adviesorgaan" in gb or "raadscommissie" in gb):
+            return ("4. Bestuurlijk", "4.3 Organisatie / Werkwijze raad")
+
+        # Aantal wethouders
+        if "wethouder" in gb and (
+                "aantal" in gb or "tijdsbestedingsnorm" in gb):
+            return ("4. Bestuurlijk", "4.3 Organisatie / Werkwijze raad")
+
+        # Wijk aan Zet / gebiedscommissie / wijkraad
+        if (re.search(r'wijk\s*aan\s*zet', gb)
+                or "wijkraad" in gb or "gebiedscommissie" in gb):
+            return ("4. Bestuurlijk", "4.3 Organisatie / Werkwijze raad")
+
+        # Opdracht aan college (participatietraject, reactie sturen)
+        if "opdracht" in gb and "college" in gb:
+            return ("4. Bestuurlijk", "4.3 Organisatie / Werkwijze raad")
+
+        # Aanwijzen terrein (begraafplaats, etc.)
+        if ("aanwijzen" in gb or "aan te wijzen" in gb) and "terrein" in gb:
+            return ("1. Ruimtelijk", "1.6 Erfpacht")
+
+        # Breed: Nota / beleidskader / plan vaststellen
+        if heeft_vaststellen:
+            nota_keywords = [
+                "nota", "kader", "visie", "strategie", "programma",
+                "handboek", "grondprijzen", "woonakkoord",
+                "huisvestingsplan", "vuistregels", "wateratlas",
+                "kiesreglement", "wijkplan", "beleidsregel", "leidraad",
+                "richtlijn", "beleidskader", "beleidsnota",
+                "gebiedsuitwerking", "uitvoeringsvoorstel", "horecanota",
+                "grondstoffennota", "transitie", "huisvestingsplannen",
+                "stijl", "plan", "beleidsplan",
+            ]
+            if any(w in tl or w in gb for w in nota_keywords):
+                return ("2. Regelgeving", "2.2 Beleidsnota / Beleidsregel")
+
+        # Nog breder: vaststellen met specifieke signalen
+        if heeft_vaststellen:
+            if "aandelen" in gb or "deelneming" in gb:
+                return ("3. Financieel", "3.6 Investering")
+            if "gunning" in gb or "1-op-1" in gb:
+                return ("3. Financieel", "3.4 Krediet")
+            if "algemeen belang" in gb or "mededingingswet" in gb:
+                return ("2. Regelgeving", "2.2 Beleidsnota / Beleidsregel")
+
+    # --- Titel-gebaseerde fallbacks (ook voor lege gevraagd_besluit) ---
+    if "instelling" in tl and (
+            "commissie" in tl or "raadscommissie" in tl):
+        return ("4. Bestuurlijk", "4.3 Organisatie / Werkwijze raad")
+    if "accountant" in tl:
+        return ("5. Controle", "5.4 Rechtmatigheid / Accountant")
+    if "vaststelling" in tl and "wijkplan" in tl:
+        return ("2. Regelgeving", "2.2 Beleidsnota / Beleidsregel")
+    if "eindrapportage" in tl or "eindevaluatie" in tl:
+        return ("5. Controle", "5.3 Decharge / Verantwoording")
+    if "bestuursmodel" in tl or "herziening" in tl and "stichting" in tl:
+        return ("4. Bestuurlijk", "4.3 Organisatie / Werkwijze raad")
 
     return None
 
