@@ -359,11 +359,21 @@ if __name__ == "__main__":
 
     if to_fetch:
         print(f"\nStap 3: Documenten ophalen van {len(to_fetch)} detailpagina's...")
-        fetch_all_documents(to_fetch)
+        CHECKPOINT = 250  # Cache tussentijds opslaan elke N records
+        fetched_so_far = []
+        for i in range(0, len(to_fetch), CHECKPOINT):
+            batch = to_fetch[i:i + CHECKPOINT]
+            fetch_all_documents(batch)
+            fetched_so_far.extend(batch)
+            # Tussentijds opslaan zodat herstart verder gaat waar het gebleven is
+            partial = cache_utils.restore_order(api_records, fetched_so_far, unchanged)
+            cache_utils.save_cache(CACHE_NAME, partial, HASH_FIELDS)
+            remaining = len(to_fetch) - len(fetched_so_far)
+            print(f"  Checkpoint: {len(fetched_so_far)}/{len(to_fetch)} opgeslagen, nog {remaining} te gaan")
     else:
         print("\nStap 3: Geen nieuwe of gewijzigde records, detailpagina's overgeslagen.")
 
-    records = cache_utils.restore_order(api_records, to_fetch, unchanged)
+    records = cache_utils.restore_order(api_records, to_fetch if to_fetch else [], unchanged)
 
     print("\nStap 4: Cache bijwerken...")
     cache_utils.save_cache(CACHE_NAME, records, HASH_FIELDS)
