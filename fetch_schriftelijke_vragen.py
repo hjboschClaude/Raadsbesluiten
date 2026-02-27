@@ -1,11 +1,19 @@
 #!/usr/bin/env python3
-"""Haal schriftelijke vragen op van gemeenteraad.rotterdam.nl en sla ze op als Excel."""
+"""Haal schriftelijke vragen op van gemeenteraad.rotterdam.nl en sla ze op als Excel.
+
+Per vraag worden opgehaald:
+  - Hoofddocument (de vraag zelf)
+  - Bijlagen bij de vraag
+  - Tussenbericht(en) via 'Relatie met' → Brieven B&W
+  - Definitieve beantwoording via 'Relatie met' → Brieven B&W
+"""
 
 import urllib.request
 import json
 import re
 import time
 import sys
+import html as html_module
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from openpyxl import Workbook
 from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
@@ -14,7 +22,7 @@ BASE_URL = "https://gemeenteraad.rotterdam.nl"
 LIST_ID = "da9b533f-5f24-4f51-8567-19fe410f15d4"
 API_URL = f"{BASE_URL}/Reports/GetReportData/{LIST_ID}"
 PAGE_SIZE = 100
-MAX_RECORDS = 100   # Testmodus: verwijder of verhoog voor volledige export
+MAX_RECORDS = 100   # Testmodus: verhoog of verwijder voor volledige export
 CONCURRENT_REQUESTS = 5
 
 COLUMNS_PARAM = (
@@ -28,18 +36,22 @@ COLUMNS_PARAM = (
 )
 
 EXCEL_COLUMNS = [
-    ("BB-nummer",        "externalid",        18),
-    ("Titel",            "title",             80),
-    ("Raadslid",         "raadslid",          30),
-    ("Partij",           "partij",            15),
-    ("Beleidsveld",      "beleidsveld",       25),
-    ("Datum ingediend",  "registrationdate",  18),
-    ("Datum afgedaan",   "datecompleted",     18),
-    ("Hoofddocument",    "hoofddocument_naam", 80),
-    ("Hoofddocument URL","hoofddocument_url",  50),
-    ("Aantal bijlagen",  "aantal_bijlagen",   15),
-    ("Bijlagen",         "bijlagen_tekst",    100),
-    ("Bijlage URLs",     "bijlagen_urls",     100),
+    ("BB-nummer",            "externalid",            18),
+    ("Titel",                "title",                 80),
+    ("Raadslid",             "raadslid",              30),
+    ("Partij",               "partij",                15),
+    ("Beleidsveld",          "beleidsveld",           25),
+    ("Datum ingediend",      "registrationdate",      18),
+    ("Datum afgedaan",       "datecompleted",         18),
+    ("Hoofddocument",        "hoofddocument_naam",    80),
+    ("Hoofddocument URL",    "hoofddocument_url",     50),
+    ("Tussenbericht(en)",    "tussenberichten_tekst", 80),
+    ("Tussenbericht URL(s)", "tussenberichten_urls",  50),
+    ("Beantwoording",        "beantwoording_naam",    80),
+    ("Beantwoording URL",    "beantwoording_url",     50),
+    ("Aantal bijlagen",      "aantal_bijlagen",       15),
+    ("Bijlagen",             "bijlagen_tekst",        100),
+    ("Bijlage URLs",         "bijlagen_urls",         100),
 ]
 
 
@@ -52,8 +64,7 @@ def http_get_with_retry(url, max_retries=4, timeout=30, data=None, headers=None)
                 return resp.read().decode("utf-8")
         except Exception as e:
             if attempt < max_retries - 1:
-                wait = 2 ** (attempt + 1)
-                time.sleep(wait)
+                time.sleep(2 ** (attempt + 1))
             else:
                 raise
 
@@ -93,7 +104,6 @@ def fetch_all_records():
         records = result["data"]
         all_records.extend(records)
 
-        # Begrens op MAX_RECORDS in testmodus
         if MAX_RECORDS and len(all_records) >= MAX_RECORDS:
             all_records = all_records[:MAX_RECORDS]
             print(f"  Lijst opgehaald: {len(all_records)}/{total} (testlimiet bereikt)")
@@ -142,8 +152,60 @@ def parse_documents(html, section_label):
     return documents
 
 
+def parse_relaties(html):
+    """Parse 'Relatie met' sectie: geeft lijst van Brieven B&W links terug.
+
+    Elk item heeft:
+      - item_url: URL naar het iBabs-item
+      - titel: tekst na de type-label
+      - is_tussenbericht: True als titel begint met 'Tussenbericht'
+    """
+    relaties = []
+    rel_m = re.search(
+        r'<dt[^>]*>\s*Relatie met\s*</dt>\s*<dd[^>]*>(.*?)</dd>', html, re.DOTALL
+    )
+    if not rel_m:
+        return relaties
+
+    for link_m in re.finditer(
+        r'href="(/Reports/Item/[^"]+)"[^>]*>\s*<span[^>]*>(.*?)</span>\s*(.*?)</a>',
+        rel_m.group(1),
+        re.DOTALL,
+    ):
+        href, type_span, title_raw = link_m.groups()
+        type_label = html_module.unescape(re.sub(r"<[^>]+>", "", type_span).strip().rstrip(":"))
+        title = html_module.unescape(re.sub(r"<[^>]+>", "", title_raw).strip())
+        title = re.sub(r"\s+", " ", title)
+
+        if type_label == "Brieven B&W":
+            relaties.append({
+                "item_url": BASE_URL + href,
+                "titel": title,
+                "is_tussenbericht": title.lower().startswith("tussenbericht"),
+            })
+
+    return relaties
+
+
+def fetch_relatie_document(relatie):
+    """Haal het hoofddocument op van een gerelateerd Brieven B&W item."""
+    try:
+        html = http_get_with_retry(relatie["item_url"])
+        docs = parse_documents(html, "Hoofddocument")
+        if docs:
+            relatie["document_naam"] = docs[0]["naam"]
+            relatie["document_url"] = docs[0]["url"]
+        else:
+            relatie["document_naam"] = relatie["titel"]
+            relatie["document_url"] = ""
+    except Exception as e:
+        relatie["document_naam"] = f"FOUT: {e}"
+        relatie["document_url"] = ""
+    return relatie
+
+
 def fetch_item_documents(record):
-    """Haal de detailpagina op en parse hoofd­document en bijlagen."""
+    """Haal de detailpagina op en parse alle documenten (vraag + bijlagen + relaties)."""
     row_id = record["DT_RowId"]
     url = f"{BASE_URL}/Reports/Item/{row_id}"
 
@@ -151,9 +213,8 @@ def fetch_item_documents(record):
         try:
             html = http_get_with_retry(url)
 
+            # Hoofddocument van de vraag zelf
             hoofddocumenten = parse_documents(html, "Hoofddocument")
-            bijlagen = parse_documents(html, "Bijlagen")
-
             if hoofddocumenten:
                 record["hoofddocument_naam"] = hoofddocumenten[0]["naam"]
                 record["hoofddocument_url"] = hoofddocumenten[0]["url"]
@@ -161,12 +222,37 @@ def fetch_item_documents(record):
                 record["hoofddocument_naam"] = ""
                 record["hoofddocument_url"] = ""
 
+            # Bijlagen bij de vraag zelf
+            bijlagen = parse_documents(html, "Bijlagen")
             record["aantal_bijlagen"] = len(bijlagen)
             record["bijlagen_tekst"] = "\n".join(
                 f"{b['naam']} ({b['grootte']})" for b in bijlagen
             )
             record["bijlagen_urls"] = "\n".join(b["url"] for b in bijlagen)
-            record["bijlagen"] = bijlagen
+
+            # Gerelateerde documenten (tussenberichten + beantwoording)
+            relaties = parse_relaties(html)
+            for rel in relaties:
+                fetch_relatie_document(rel)
+
+            tussenberichten = [r for r in relaties if r["is_tussenbericht"]]
+            beantwoordingen = [r for r in relaties if not r["is_tussenbericht"]]
+
+            record["tussenberichten_tekst"] = "\n".join(
+                r.get("document_naam", r["titel"]) for r in tussenberichten
+            )
+            record["tussenberichten_urls"] = "\n".join(
+                r.get("document_url", "") for r in tussenberichten
+            )
+
+            if beantwoordingen:
+                record["beantwoording_naam"] = beantwoordingen[0].get(
+                    "document_naam", beantwoordingen[0]["titel"]
+                )
+                record["beantwoording_url"] = beantwoordingen[0].get("document_url", "")
+            else:
+                record["beantwoording_naam"] = ""
+                record["beantwoording_url"] = ""
 
             return record
 
@@ -175,11 +261,14 @@ def fetch_item_documents(record):
                 time.sleep(2 ** (attempt + 1))
             else:
                 print(f"  FOUT bij {row_id}: {e}", file=sys.stderr)
-                record["hoofddocument_naam"] = f"FOUT: {e}"
-                record["hoofddocument_url"] = ""
+                for key in [
+                    "hoofddocument_naam", "hoofddocument_url",
+                    "tussenberichten_tekst", "tussenberichten_urls",
+                    "beantwoording_naam", "beantwoording_url",
+                    "bijlagen_tekst", "bijlagen_urls",
+                ]:
+                    record.setdefault(key, "")
                 record["aantal_bijlagen"] = ""
-                record["bijlagen_tekst"] = ""
-                record["bijlagen"] = []
                 return record
 
 
@@ -193,7 +282,6 @@ def fetch_all_documents(records):
             executor.submit(fetch_item_documents, record): record
             for record in records
         }
-
         for future in as_completed(futures):
             completed += 1
             if completed % 25 == 0 or completed == total:
@@ -229,6 +317,7 @@ def create_excel(records, filename):
         ws.column_dimensions[cell.column_letter].width = width
 
     # Data
+    url_keys = {"hoofddocument_url", "beantwoording_url", "tussenberichten_urls", "bijlagen_urls"}
     for row_idx, record in enumerate(records, 2):
         for col_idx, (_, key, _) in enumerate(EXCEL_COLUMNS, 1):
             value = record.get(key, "")
@@ -236,15 +325,17 @@ def create_excel(records, filename):
             cell.alignment = cell_alignment
             cell.border = thin_border
 
-            if key == "hoofddocument_url" and value:
-                cell.hyperlink = value
-                cell.font = url_font
-            elif key == "bijlagen_urls" and value:
+            if key in url_keys and value:
+                # Enkelvoudige URL: maak klikbare hyperlink
+                if key in ("hoofddocument_url", "beantwoording_url") and "\n" not in str(value):
+                    cell.hyperlink = value
                 cell.font = url_font
 
     ws.freeze_panes = "A2"
 
-    last_col = chr(ord("A") + len(EXCEL_COLUMNS) - 1)
+    # Auto-filter op alle kolommen
+    from openpyxl.utils import get_column_letter
+    last_col = get_column_letter(len(EXCEL_COLUMNS))
     ws.auto_filter.ref = f"A1:{last_col}{len(records) + 1}"
 
     wb.save(filename)
@@ -264,14 +355,14 @@ if __name__ == "__main__":
         1 for r in records
         if isinstance(r.get("aantal_bijlagen"), int) and r["aantal_bijlagen"] > 0
     )
-    totaal_bijlagen = sum(
-        r.get("aantal_bijlagen", 0) for r in records
-        if isinstance(r.get("aantal_bijlagen"), int)
-    )
+    met_beantwoording = sum(1 for r in records if r.get("beantwoording_url"))
+    met_tussenbericht = sum(1 for r in records if r.get("tussenberichten_urls"))
+
     if fouten:
         print(f"  {fouten} vragen konden niet opgehaald worden (fout)")
-    print(f"  {met_bijlagen} vragen hebben bijlagen")
-    print(f"  {totaal_bijlagen} bijlagen in totaal")
+    print(f"  {met_bijlagen} vragen hebben bijlagen bij de vraag")
+    print(f"  {met_tussenbericht} vragen hebben tussenbericht(en)")
+    print(f"  {met_beantwoording} vragen hebben een definitieve beantwoording")
 
     print("\nStap 3: Excel genereren...")
     create_excel(records, "schriftelijke_vragen.xlsx")
