@@ -1,0 +1,277 @@
+#!/usr/bin/env python3
+"""Haal schriftelijke vragen op van gemeenteraad.rotterdam.nl en sla ze op als Excel."""
+
+import urllib.request
+import json
+import re
+import time
+import sys
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from openpyxl import Workbook
+from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
+
+BASE_URL = "https://gemeenteraad.rotterdam.nl"
+LIST_ID = "da9b533f-5f24-4f51-8567-19fe410f15d4"
+API_URL = f"{BASE_URL}/Reports/GetReportData/{LIST_ID}"
+PAGE_SIZE = 100
+MAX_RECORDS = 100   # Testmodus: verwijder of verhoog voor volledige export
+CONCURRENT_REQUESTS = 5
+
+COLUMNS_PARAM = (
+    "columns[0][data]=externalid&columns[0][name]=externalid&columns[0][searchable]=true&"
+    "columns[1][data]=title&columns[1][name]=title&columns[1][searchable]=false&"
+    "columns[2][data]=partij&columns[2][name]=partij&columns[2][searchable]=true&"
+    "columns[3][data]=registrationdate&columns[3][name]=registrationdate&columns[3][searchable]=true&"
+    "columns[4][data]=datecompleted&columns[4][name]=datecompleted&columns[4][searchable]=true&"
+    "columns[5][data]=beleidsveld&columns[5][name]=beleidsveld&columns[5][searchable]=true&"
+    "columns[6][data]=raadslid&columns[6][name]=raadslid&columns[6][searchable]=true"
+)
+
+EXCEL_COLUMNS = [
+    ("BB-nummer",        "externalid",        18),
+    ("Titel",            "title",             80),
+    ("Raadslid",         "raadslid",          30),
+    ("Partij",           "partij",            15),
+    ("Beleidsveld",      "beleidsveld",       25),
+    ("Datum ingediend",  "registrationdate",  18),
+    ("Datum afgedaan",   "datecompleted",     18),
+    ("Hoofddocument",    "hoofddocument_naam", 80),
+    ("Hoofddocument URL","hoofddocument_url",  50),
+    ("Aantal bijlagen",  "aantal_bijlagen",   15),
+    ("Bijlagen",         "bijlagen_tekst",    100),
+    ("Bijlage URLs",     "bijlagen_urls",     100),
+]
+
+
+def http_get_with_retry(url, max_retries=4, timeout=30, data=None, headers=None):
+    """HTTP request met exponential backoff retry."""
+    for attempt in range(max_retries):
+        try:
+            req = urllib.request.Request(url, data=data, headers=headers or {})
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                return resp.read().decode("utf-8")
+        except Exception as e:
+            if attempt < max_retries - 1:
+                wait = 2 ** (attempt + 1)
+                time.sleep(wait)
+            else:
+                raise
+
+
+def fetch_page(draw, start, length):
+    params = (
+        f"draw={draw}&start={start}&length={length}"
+        f"&order[0][column]=3&order[0][dir]=desc"
+        f"&search[value]=&search[regex]=false"
+        f"&{COLUMNS_PARAM}"
+    )
+    body = http_get_with_retry(
+        API_URL,
+        data=params.encode("utf-8"),
+        headers={
+            "Content-Type": "application/x-www-form-urlencoded",
+            "Referer": f"{BASE_URL}/Reports/Details/{LIST_ID}",
+        },
+    )
+    return json.loads(body)
+
+
+def fetch_all_records():
+    all_records = []
+    start = 0
+    draw = 1
+    total = None
+
+    while True:
+        result = fetch_page(draw, start, PAGE_SIZE)
+        if total is None:
+            total = result["recordsTotal"]
+            print(f"Totaal aantal schriftelijke vragen: {total}")
+            if MAX_RECORDS:
+                print(f"  (testmodus: maximaal {MAX_RECORDS} records)")
+
+        records = result["data"]
+        all_records.extend(records)
+
+        # Begrens op MAX_RECORDS in testmodus
+        if MAX_RECORDS and len(all_records) >= MAX_RECORDS:
+            all_records = all_records[:MAX_RECORDS]
+            print(f"  Lijst opgehaald: {len(all_records)}/{total} (testlimiet bereikt)")
+            break
+
+        print(f"  Lijst opgehaald: {len(all_records)}/{total}")
+
+        if len(all_records) >= total or len(records) == 0:
+            break
+
+        start += PAGE_SIZE
+        draw += 1
+
+    return all_records
+
+
+def parse_documents(html, section_label):
+    """Parse documenten uit een dt/dd sectie van de HTML."""
+    documents = []
+    pattern = (
+        r'<dt[^>]*>\s*' + re.escape(section_label) + r'\s*</dt>\s*<dd[^>]*>(.*?)</dd>'
+    )
+    match = re.search(pattern, html, re.DOTALL)
+    if not match:
+        return documents
+
+    content = match.group(1)
+    for doc_match in re.finditer(
+        r'href="([^"]+)"[^>]*data-document-id="([^"]+)"[^>]*>\s*'
+        r'<span class="icon\s+(\w+)"[^>]*>[^<]*</span>\s*'
+        r'(.*?)\s*<span class="badge[^"]*">(.*?)</span>',
+        content,
+        re.DOTALL,
+    ):
+        url, doc_id, file_type, name, size = doc_match.groups()
+        name = re.sub(r"<[^>]+>", "", name).strip()
+        name = re.sub(r"\s+", " ", name)
+        documents.append({
+            "naam": name,
+            "url": BASE_URL + url,
+            "document_id": doc_id,
+            "type": file_type,
+            "grootte": size.strip(),
+        })
+
+    return documents
+
+
+def fetch_item_documents(record):
+    """Haal de detailpagina op en parse hoofd­document en bijlagen."""
+    row_id = record["DT_RowId"]
+    url = f"{BASE_URL}/Reports/Item/{row_id}"
+
+    for attempt in range(4):
+        try:
+            html = http_get_with_retry(url)
+
+            hoofddocumenten = parse_documents(html, "Hoofddocument")
+            bijlagen = parse_documents(html, "Bijlagen")
+
+            if hoofddocumenten:
+                record["hoofddocument_naam"] = hoofddocumenten[0]["naam"]
+                record["hoofddocument_url"] = hoofddocumenten[0]["url"]
+            else:
+                record["hoofddocument_naam"] = ""
+                record["hoofddocument_url"] = ""
+
+            record["aantal_bijlagen"] = len(bijlagen)
+            record["bijlagen_tekst"] = "\n".join(
+                f"{b['naam']} ({b['grootte']})" for b in bijlagen
+            )
+            record["bijlagen_urls"] = "\n".join(b["url"] for b in bijlagen)
+            record["bijlagen"] = bijlagen
+
+            return record
+
+        except Exception as e:
+            if attempt < 3:
+                time.sleep(2 ** (attempt + 1))
+            else:
+                print(f"  FOUT bij {row_id}: {e}", file=sys.stderr)
+                record["hoofddocument_naam"] = f"FOUT: {e}"
+                record["hoofddocument_url"] = ""
+                record["aantal_bijlagen"] = ""
+                record["bijlagen_tekst"] = ""
+                record["bijlagen"] = []
+                return record
+
+
+def fetch_all_documents(records):
+    """Haal documenten op voor alle records met parallelle requests."""
+    total = len(records)
+    completed = 0
+
+    with ThreadPoolExecutor(max_workers=CONCURRENT_REQUESTS) as executor:
+        futures = {
+            executor.submit(fetch_item_documents, record): record
+            for record in records
+        }
+
+        for future in as_completed(futures):
+            completed += 1
+            if completed % 25 == 0 or completed == total:
+                print(f"  Documenten opgehaald: {completed}/{total}")
+
+    return records
+
+
+def create_excel(records, filename):
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Schriftelijke vragen"
+
+    header_font = Font(name="Calibri", bold=True, color="FFFFFF", size=11)
+    header_fill = PatternFill(start_color="00674A", end_color="00674A", fill_type="solid")
+    header_alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    cell_alignment = Alignment(vertical="top", wrap_text=True)
+    url_font = Font(name="Calibri", color="0563C1", underline="single", size=10)
+    thin_border = Border(
+        left=Side(style="thin", color="D9D9D9"),
+        right=Side(style="thin", color="D9D9D9"),
+        top=Side(style="thin", color="D9D9D9"),
+        bottom=Side(style="thin", color="D9D9D9"),
+    )
+
+    # Headers
+    for col_idx, (header, _, width) in enumerate(EXCEL_COLUMNS, 1):
+        cell = ws.cell(row=1, column=col_idx, value=header)
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.alignment = header_alignment
+        cell.border = thin_border
+        ws.column_dimensions[cell.column_letter].width = width
+
+    # Data
+    for row_idx, record in enumerate(records, 2):
+        for col_idx, (_, key, _) in enumerate(EXCEL_COLUMNS, 1):
+            value = record.get(key, "")
+            cell = ws.cell(row=row_idx, column=col_idx, value=value)
+            cell.alignment = cell_alignment
+            cell.border = thin_border
+
+            if key == "hoofddocument_url" and value:
+                cell.hyperlink = value
+                cell.font = url_font
+            elif key == "bijlagen_urls" and value:
+                cell.font = url_font
+
+    ws.freeze_panes = "A2"
+
+    last_col = chr(ord("A") + len(EXCEL_COLUMNS) - 1)
+    ws.auto_filter.ref = f"A1:{last_col}{len(records) + 1}"
+
+    wb.save(filename)
+    print(f"\nExcel bestand opgeslagen: {filename} ({len(records)} rijen)")
+
+
+if __name__ == "__main__":
+    print("Stap 1: Schriftelijke vragen ophalen via API...")
+    records = fetch_all_records()
+
+    print(f"\nStap 2: Documenten ophalen van {len(records)} detailpagina's...")
+    fetch_all_documents(records)
+
+    # Statistieken
+    fouten = sum(1 for r in records if not isinstance(r.get("aantal_bijlagen"), int))
+    met_bijlagen = sum(
+        1 for r in records
+        if isinstance(r.get("aantal_bijlagen"), int) and r["aantal_bijlagen"] > 0
+    )
+    totaal_bijlagen = sum(
+        r.get("aantal_bijlagen", 0) for r in records
+        if isinstance(r.get("aantal_bijlagen"), int)
+    )
+    if fouten:
+        print(f"  {fouten} vragen konden niet opgehaald worden (fout)")
+    print(f"  {met_bijlagen} vragen hebben bijlagen")
+    print(f"  {totaal_bijlagen} bijlagen in totaal")
+
+    print("\nStap 3: Excel genereren...")
+    create_excel(records, "schriftelijke_vragen.xlsx")
