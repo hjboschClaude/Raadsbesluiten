@@ -49,7 +49,6 @@ EXCEL_COLUMNS = [
     ("Tussenbericht URL(s)", "tussenberichten_urls",  50),
     ("Beantwoording",        "beantwoording_naam",    80),
     ("Beantwoording URL",    "beantwoording_url",     50),
-    ("Aantal bijlagen",      "aantal_bijlagen",       15),
     ("Bijlagen",             "bijlagen_tekst",        100),
     ("Bijlage URLs",         "bijlagen_urls",         100),
 ]
