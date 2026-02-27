@@ -9,11 +9,18 @@ import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from openpyxl import Workbook
 from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
+import cache_utils
 
 BASE_URL = "https://gemeenteraad.rotterdam.nl"
 API_URL = f"{BASE_URL}/Reports/GetReportData/4a6cb9e4-2668-4729-852a-ddb3b3ea90d3"
 PAGE_SIZE = 100
 CONCURRENT_REQUESTS = 5
+
+CACHE_NAME = "raadsvoorstellen"
+HASH_FIELDS = [
+    "externalid", "title", "beleidsveld", "registrationdate",
+    "portefeuillehouder", "aanwie", "behandeladvies",
+]
 
 COLUMNS_PARAM = (
     "columns[0][data]=beleidsveld&columns[0][name]=beleidsveld&columns[0][searchable]=true&"
@@ -243,10 +250,23 @@ def create_excel(records, filename):
 
 if __name__ == "__main__":
     print("Stap 1: Raadsvoorstellen ophalen via API...")
-    records = fetch_all_records()
+    api_records = fetch_all_records()
 
-    print(f"\nStap 2: Documenten ophalen van {len(records)} detailpagina's...")
-    fetch_all_documents(records)
+    print("\nStap 2: Vergelijken met cache...")
+    cache = cache_utils.load_cache(CACHE_NAME)
+    to_fetch, unchanged, stats = cache_utils.find_changes(api_records, cache, HASH_FIELDS)
+    print(f"  Nieuw: {stats['nieuw']}, Gewijzigd: {stats['gewijzigd']}, Ongewijzigd: {stats['ongewijzigd']}")
+
+    if to_fetch:
+        print(f"\nStap 3: Documenten ophalen van {len(to_fetch)} detailpagina's...")
+        fetch_all_documents(to_fetch)
+    else:
+        print("\nStap 3: Geen nieuwe of gewijzigde records, detailpagina's overgeslagen.")
+
+    records = cache_utils.restore_order(api_records, to_fetch, unchanged)
+
+    print("\nStap 4: Cache bijwerken...")
+    cache_utils.save_cache(CACHE_NAME, records, HASH_FIELDS)
 
     # Statistieken
     fouten = sum(1 for r in records if not isinstance(r.get("aantal_bijlagen"), int))
@@ -257,5 +277,5 @@ if __name__ == "__main__":
     print(f"\n  {met_bijlagen} raadsvoorstellen hebben bijlagen")
     print(f"  {totaal_bijlagen} bijlagen in totaal")
 
-    print("\nStap 3: Excel genereren...")
+    print("\nStap 5: Excel genereren...")
     create_excel(records, "raadsvoorstellen.xlsx")

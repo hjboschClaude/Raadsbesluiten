@@ -17,13 +17,20 @@ import html as html_module
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from openpyxl import Workbook
 from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
+import cache_utils
 
 BASE_URL = "https://gemeenteraad.rotterdam.nl"
 LIST_ID = "da9b533f-5f24-4f51-8567-19fe410f15d4"
 API_URL = f"{BASE_URL}/Reports/GetReportData/{LIST_ID}"
 PAGE_SIZE = 100
-MAX_RECORDS = 100   # Testmodus: verhoog of verwijder voor volledige export
+MAX_RECORDS = 0     # 0 = geen limiet (volledig)
 CONCURRENT_REQUESTS = 5
+
+CACHE_NAME = "schriftelijke_vragen"
+HASH_FIELDS = [
+    "externalid", "title", "partij", "registrationdate",
+    "datecompleted", "beleidsveld", "raadslid",
+]
 
 COLUMNS_PARAM = (
     "columns[0][data]=externalid&columns[0][name]=externalid&columns[0][searchable]=true&"
@@ -343,10 +350,23 @@ def create_excel(records, filename):
 
 if __name__ == "__main__":
     print("Stap 1: Schriftelijke vragen ophalen via API...")
-    records = fetch_all_records()
+    api_records = fetch_all_records()
 
-    print(f"\nStap 2: Documenten ophalen van {len(records)} detailpagina's...")
-    fetch_all_documents(records)
+    print("\nStap 2: Vergelijken met cache...")
+    cache = cache_utils.load_cache(CACHE_NAME)
+    to_fetch, unchanged, stats = cache_utils.find_changes(api_records, cache, HASH_FIELDS)
+    print(f"  Nieuw: {stats['nieuw']}, Gewijzigd: {stats['gewijzigd']}, Ongewijzigd: {stats['ongewijzigd']}")
+
+    if to_fetch:
+        print(f"\nStap 3: Documenten ophalen van {len(to_fetch)} detailpagina's...")
+        fetch_all_documents(to_fetch)
+    else:
+        print("\nStap 3: Geen nieuwe of gewijzigde records, detailpagina's overgeslagen.")
+
+    records = cache_utils.restore_order(api_records, to_fetch, unchanged)
+
+    print("\nStap 4: Cache bijwerken...")
+    cache_utils.save_cache(CACHE_NAME, records, HASH_FIELDS)
 
     # Statistieken
     fouten = sum(1 for r in records if not isinstance(r.get("aantal_bijlagen"), int))
@@ -363,5 +383,5 @@ if __name__ == "__main__":
     print(f"  {met_tussenbericht} vragen hebben tussenbericht(en)")
     print(f"  {met_beantwoording} vragen hebben een definitieve beantwoording")
 
-    print("\nStap 3: Excel genereren...")
+    print("\nStap 5: Excel genereren...")
     create_excel(records, "schriftelijke_vragen.xlsx")

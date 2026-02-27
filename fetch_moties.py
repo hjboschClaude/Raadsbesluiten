@@ -14,12 +14,19 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from openpyxl import Workbook
 from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
 from openpyxl.utils import get_column_letter
+import cache_utils
 
 BASE_URL = "https://gemeenteraad.rotterdam.nl"
 LIST_ID = "a61fab39-bc62-464f-968d-db31925a66e5"
 API_URL = f"{BASE_URL}/Reports/GetReportData/{LIST_ID}"
 PAGE_SIZE = 100
 CONCURRENT_REQUESTS = 3  # Voorzichtig met rate limiting
+
+CACHE_NAME = "moties"
+HASH_FIELDS = [
+    "externalid", "title", "partij", "registrationdate",
+    "uitslag", "completed", "datecompleted", "raadslid",
+]
 
 COLUMNS_PARAM = "&".join([
     "columns[0][data]=externalid&columns[0][name]=externalid&columns[0][searchable]=true",
@@ -425,30 +432,57 @@ def create_excel(records, filename):
 
 if __name__ == "__main__":
     print("Stap 1: Alle moties ophalen via API...")
-    records = fetch_all_records()
+    api_records = fetch_all_records()
 
-    # Statistieken
+    # Statistieken uitslagen
     uitslagen = {}
-    for r in records:
+    for r in api_records:
         u = r.get("uitslag") or "(geen uitslag)"
         uitslagen[u] = uitslagen.get(u, 0) + 1
     print("\n  Uitslagen:")
     for u, c in sorted(uitslagen.items(), key=lambda x: -x[1]):
         print(f"    {u}: {c}")
 
-    print(f"\nStap 2: Details ophalen voor aangenomen moties...")
-    fetch_details_for_aangenomen(records)
+    print("\nStap 2: Vergelijken met cache...")
+    cache = cache_utils.load_cache(CACHE_NAME)
+    to_fetch, unchanged, stats = cache_utils.find_changes(api_records, cache, HASH_FIELDS)
+    print(f"  Nieuw: {stats['nieuw']}, Gewijzigd: {stats['gewijzigd']}, Ongewijzigd: {stats['ongewijzigd']}")
+
+    # Open aangenomen moties altijd opnieuw ophalen: stand van zaken kan wijzigen
+    # zonder dat de lijst-velden veranderen.
+    api_lookup = {r["DT_RowId"]: r for r in api_records}
+    open_aangenomen_ids = {
+        r["DT_RowId"] for r in unchanged
+        if r.get("uitslag") == "Aangenomen"
+        and r.get("afgedaan") != "Ja"
+        and not r.get("datecompleted")
+    }
+    if open_aangenomen_ids:
+        print(f"  {len(open_aangenomen_ids)} open aangenomen moties opnieuw ophalen (stand van zaken)")
+        to_fetch += [api_lookup[rid] for rid in open_aangenomen_ids]
+        unchanged = [r for r in unchanged if r["DT_RowId"] not in open_aangenomen_ids]
+
+    if to_fetch:
+        print(f"\nStap 3: Details ophalen voor aangenomen moties ({len(to_fetch)} te verwerken)...")
+        fetch_details_for_aangenomen(to_fetch)
+
+        print(f"\nStap 4: Document-URLs ophalen voor overige moties...")
+        fetch_document_urls_for_overige(to_fetch)
+    else:
+        print("\nStap 3-4: Geen nieuwe of gewijzigde records, scraping overgeslagen.")
+
+    records = cache_utils.restore_order(api_records, to_fetch, unchanged)
 
     # Detail statistieken
     aangenomen = [r for r in records if r.get("uitslag") == "Aangenomen"]
     opgehaald = sum(1 for r in aangenomen if r.get("detail_opgehaald"))
     afgedaan = sum(1 for r in aangenomen if r.get("afgedaan") == "Ja" or r.get("datecompleted"))
-    print(f"\n  Details succesvol opgehaald: {opgehaald}/{len(aangenomen)}")
+    print(f"\n  Details beschikbaar: {opgehaald}/{len(aangenomen)}")
     print(f"  Afgedaan: {afgedaan}")
     print(f"  Nog open: {len(aangenomen) - afgedaan}")
 
-    print(f"\nStap 3: Document-URLs ophalen voor overige moties...")
-    fetch_document_urls_for_overige(records)
+    print("\nStap 5: Cache bijwerken...")
+    cache_utils.save_cache(CACHE_NAME, records, HASH_FIELDS)
 
-    print("\nStap 4: Excel genereren...")
+    print("\nStap 6: Excel genereren...")
     create_excel(records, "moties.xlsx")
