@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Schriftelijke vragen — Gemeenteraad Rotterdam</title>
+  <link rel="preconnect" href="https://fonts.bunny.net">
+  <link href="https://fonts.bunny.net/css?family=space-grotesk:300,400,700,900&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js" defer></script>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- HEADER -->
+<header class="site-header" role="banner">
+  <div class="container header-inner">
+    <div class="header-brand">
+      <!-- Rotterdam R-logo (SVG) -->
+      <svg class="header-logo" viewBox="0 0 60 60" aria-hidden="true" focusable="false">
+        <rect width="60" height="60" fill="white"/>
+        <text x="5" y="50" font-size="58" font-weight="900"
+              font-family="'Space Grotesk', sans-serif" fill="#00811F">R</text>
+      </svg>
+      <div class="header-title">
+        <h1>Schriftelijke vragen</h1>
+        <p class="header-sub">Gemeenteraad Rotterdam 2022–2026</p>
+      </div>
+    </div>
+    <p class="header-count" id="headerCount" aria-live="polite">Laden…</p>
+  </div>
+</header>
+
+<main class="container" id="main">
+
+  <!-- FILTERBAR -->
+  <section class="filters" aria-label="Zoeken en filteren">
+    <div class="filter-row">
+      <div class="search-wrap">
+        <label for="searchInput" class="sr-only">Zoeken op titel of BB-nummer</label>
+        <input type="search" id="searchInput"
+               placeholder="Zoek op titel of BB-nummer…"
+               aria-label="Zoeken op titel of BB-nummer">
+      </div>
+      <div class="select-group">
+        <label for="partijFilter" class="sr-only">Filter op partij</label>
+        <select id="partijFilter" aria-label="Filter op partij">
+          <option value="">Alle partijen</option>
+        </select>
+        <label for="jaarFilter" class="sr-only">Filter op jaar</label>
+        <select id="jaarFilter" aria-label="Filter op jaar">
+          <option value="">Alle jaren</option>
+          <option value="2022">2022</option>
+          <option value="2023">2023</option>
+          <option value="2024">2024</option>
+          <option value="2025">2025</option>
+          <option value="2026">2026</option>
+        </select>
+        <label for="statusFilter" class="sr-only">Filter op status</label>
+        <select id="statusFilter" aria-label="Filter op status">
+          <option value="">Alle statussen</option>
+          <option value="beantwoord">Beantwoord</option>
+          <option value="open">Nog open</option>
+        </select>
+        <label for="beleidsveldFilter" class="sr-only">Filter op beleidsveld</label>
+        <select id="beleidsveldFilter" aria-label="Filter op beleidsveld">
+          <option value="">Alle beleidsvelden</option>
+        </select>
+      </div>
+      <button id="resetBtn" type="button" aria-label="Alle filters wissen">
+        Wis filters
+      </button>
+    </div>
+  </section>
+
+  <!-- KPI KAARTEN -->
+  <section class="kpis" aria-label="Overzichtscijfers">
+    <article class="kpi-card" aria-label="Totaal aantal vragen">
+      <span class="kpi-value" id="kpiTotaal">—</span>
+      <span class="kpi-label">Totaal vragen</span>
+    </article>
+    <article class="kpi-card" aria-label="Percentage beantwoord">
+      <span class="kpi-value" id="kpiPctBeantwoord">—</span>
+      <span class="kpi-label">% Beantwoord</span>
+    </article>
+    <article class="kpi-card kpi-open" aria-label="Aantal nog open">
+      <span class="kpi-value" id="kpiOpen">—</span>
+      <span class="kpi-label">Nog open</span>
+    </article>
+    <article class="kpi-card" aria-label="Meest actieve partij">
+      <span class="kpi-value kpi-value--sm" id="kpiPartij">—</span>
+      <span class="kpi-label">Meest actieve partij</span>
+    </article>
+    <article class="kpi-card" aria-label="Gemiddelde doorlooptijd beantwoorde vragen">
+      <span class="kpi-value" id="kpiDoorlooptijd">—</span>
+      <span class="kpi-label">Gem. doorlooptijd (beantwoord)</span>
+    </article>
+  </section>
+
+  <!-- GRAFIEKEN -->
+  <section class="charts" aria-label="Grafieken">
+    <div class="chart-card chart-year">
+      <h2 class="chart-title">Vragen per jaar</h2>
+      <div class="chart-wrap"><canvas id="chartYear" aria-label="Staafdiagram vragen per jaar"></canvas></div>
+    </div>
+    <div class="chart-card chart-donut">
+      <h2 class="chart-title">Open vs beantwoord</h2>
+      <div class="chart-wrap chart-wrap--donut">
+        <canvas id="chartDonut" aria-label="Donutdiagram open versus beantwoord"></canvas>
+      </div>
+    </div>
+    <div class="chart-card chart-party">
+      <h2 class="chart-title">Top 10 partijen</h2>
+      <div class="chart-wrap chart-wrap--tall"><canvas id="chartParty" aria-label="Horizontale balk top 10 partijen"></canvas></div>
+    </div>
+    <div class="chart-card chart-quarter">
+      <h2 class="chart-title">Vragen per kwartaal</h2>
+      <div class="chart-wrap"><canvas id="chartQuarter" aria-label="Lijndiagram vragen per kwartaal"></canvas></div>
+    </div>
+  </section>
+
+  <!-- DATATABLE -->
+  <section class="table-section" aria-label="Overzicht schriftelijke vragen">
+    <div class="table-header-row">
+      <h2 class="section-title">
+        Overzicht — <span id="tableCount">0</span> vragen
+      </h2>
+      <p class="table-hint">
+        Klik op een rij of BB-nummer om de vraag te openen op het portaal.
+        Tussenberichten en antwoorden zijn beschikbaar op de portaalpagina van elke vraag.
+      </p>
+    </div>
+
+    <div class="table-wrap" role="region" aria-label="Scrollbare tabel" tabindex="0">
+      <table id="mainTable" aria-label="Schriftelijke vragen overzicht">
+        <thead>
+          <tr>
+            <th scope="col" class="sortable" data-sort="id" tabindex="0"
+                aria-sort="none">BB-nr</th>
+            <th scope="col" class="sortable col-titel" data-sort="titel" tabindex="0"
+                aria-sort="none">Titel</th>
+            <th scope="col" class="sortable" data-sort="partij" tabindex="0"
+                aria-sort="none">Partij</th>
+            <th scope="col" class="sortable" data-sort="datum_ingediend" tabindex="0"
+                aria-sort="descending">Ingediend</th>
+            <th scope="col" class="sortable" data-sort="datum_beantwoord" tabindex="0"
+                aria-sort="none">Beantwoord</th>
+            <th scope="col" class="sortable" data-sort="doorlooptijd_dagen" tabindex="0"
+                aria-sort="none">Doorlooptijd</th>
+            <th scope="col">Status</th>
+            <th scope="col" class="sortable" data-sort="beleidsveld" tabindex="0"
+                aria-sort="none">Beleidsveld</th>
+          </tr>
+        </thead>
+        <tbody id="tableBody">
+          <tr class="loading-row"><td colspan="8">Data wordt geladen…</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- PAGINERING -->
+    <nav class="pagination" id="pagination" aria-label="Paginering"></nav>
+  </section>
+
+</main>
+
+<footer class="site-footer">
+  <div class="container">
+    <p>
+      Bron: <a href="https://gemeenteraad.rotterdam.nl" target="_blank" rel="noopener">
+        gemeenteraad.rotterdam.nl
+      </a> — Data automatisch opgehaald via het iBabs Publieksportaal.
+      Tussenberichten en antwoorden zijn te vinden op de portaalpagina van elke schriftelijke vraag.
+    </p>
+  </div>
+</footer>
+
+<noscript>
+  <div style="padding:2rem;background:#B53322;color:white;text-align:center">
+    Dit dashboard vereist JavaScript. Schakel JavaScript in om de pagina te bekijken.
+  </div>
+</noscript>
+
+<script src="app.js"></script>
+</body>
+</html>

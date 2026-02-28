@@ -1,0 +1,480 @@
+/* ============================================================
+   Rotterdam Huisstijl — Dashboard Schriftelijke Vragen
+   Gebaseerd op onzestijl.rotterdam.nl
+   ============================================================ */
+
+/* --- CSS Design Tokens --- */
+:root {
+  --groen:        #00811F;
+  --groen-donker: #005F16;
+  --roze:         #C93675;
+  --roze-donker:  #A12B5E;
+  --tekst:        #404B4F;
+  --sublabel:     #657B7B;
+  --achtergrond:  #EFF4F6;
+  --wit:          #FFFFFF;
+  --rood:         #B53322;
+  --oranje:       #D9690F;
+  --border:       #C8D6DB;
+  --radius:       0px;
+  --schaduw:      0 2px 8px rgba(0,0,0,.08);
+  --font:         'Space Grotesk', system-ui, sans-serif;
+}
+
+/* --- Reset & Base --- */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html { font-size: 16px; scroll-behavior: smooth; }
+
+body {
+  font-family: var(--font);
+  font-weight: 300;
+  color: var(--tekst);
+  background: var(--achtergrond);
+  line-height: 1.5;
+}
+
+.sr-only {
+  position: absolute; width: 1px; height: 1px;
+  padding: 0; margin: -1px; overflow: hidden;
+  clip: rect(0,0,0,0); white-space: nowrap; border: 0;
+}
+
+a { color: var(--groen); text-decoration: underline; }
+a:hover { color: var(--groen-donker); }
+
+.container {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 0 1.5rem;
+}
+
+/* --- Header --- */
+.site-header {
+  background: var(--groen);
+  color: var(--wit);
+  padding: 1.25rem 0;
+  box-shadow: var(--schaduw);
+}
+
+.header-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.header-brand {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.header-logo {
+  width: 52px;
+  height: 52px;
+  flex-shrink: 0;
+  border-radius: 0;
+}
+
+.header-title h1 {
+  font-size: 1.6rem;
+  font-weight: 900;
+  line-height: 1.1;
+  color: var(--wit);
+}
+
+.header-sub {
+  font-size: 0.875rem;
+  font-weight: 300;
+  color: rgba(255,255,255,.85);
+}
+
+.header-count {
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: rgba(255,255,255,.9);
+  white-space: nowrap;
+}
+
+/* --- Main layout --- */
+#main { padding: 1.5rem 1.5rem 3rem; }
+
+/* --- Filterbar --- */
+.filters {
+  background: var(--wit);
+  padding: 1rem 1.25rem;
+  margin-bottom: 1.5rem;
+  box-shadow: var(--schaduw);
+}
+
+.filter-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  align-items: center;
+}
+
+.search-wrap { flex: 1 1 240px; }
+
+.search-wrap input[type="search"] {
+  width: 100%;
+  padding: 0.55rem 0.85rem;
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius);
+  font: inherit;
+  font-size: 0.925rem;
+  color: var(--tekst);
+  background: var(--wit);
+  outline: none;
+  transition: border-color .15s;
+}
+.search-wrap input:focus { border-color: var(--groen); }
+
+.select-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
+.select-group select {
+  padding: 0.55rem 0.75rem;
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius);
+  font: inherit;
+  font-size: 0.9rem;
+  color: var(--tekst);
+  background: var(--wit);
+  cursor: pointer;
+  outline: none;
+  transition: border-color .15s;
+}
+.select-group select:focus { border-color: var(--groen); }
+
+#resetBtn {
+  padding: 0.55rem 1.1rem;
+  background: var(--wit);
+  border: 1.5px solid var(--groen);
+  color: var(--groen);
+  font: inherit;
+  font-size: 0.9rem;
+  font-weight: 700;
+  cursor: pointer;
+  border-radius: var(--radius);
+  transition: background .15s, color .15s;
+  white-space: nowrap;
+}
+#resetBtn:hover, #resetBtn:focus {
+  background: var(--groen);
+  color: var(--wit);
+  outline: none;
+}
+
+/* --- KPI Kaarten --- */
+.kpis {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.kpi-card {
+  background: var(--wit);
+  padding: 1.25rem 1rem 1rem;
+  border-top: 4px solid var(--groen);
+  box-shadow: var(--schaduw);
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.kpi-card.kpi-open { border-top-color: var(--roze); }
+
+.kpi-value {
+  font-size: 2rem;
+  font-weight: 900;
+  color: var(--tekst);
+  line-height: 1;
+}
+
+.kpi-value--sm { font-size: 1.25rem; }
+
+.kpi-label {
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  color: var(--sublabel);
+}
+
+/* --- Grafieken --- */
+.charts {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: auto auto;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.chart-card {
+  background: var(--wit);
+  padding: 1.25rem;
+  box-shadow: var(--schaduw);
+}
+
+.chart-title {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--tekst);
+  margin-bottom: 0.75rem;
+}
+
+.chart-wrap { position: relative; height: 220px; }
+.chart-wrap--donut { height: 220px; }
+.chart-wrap--tall { height: 300px; }
+
+/* Full width charts */
+.chart-party { grid-column: 1 / -1; }
+.chart-quarter { grid-column: 1 / -1; }
+
+/* --- Tabel sectie --- */
+.table-section {
+  background: var(--wit);
+  box-shadow: var(--schaduw);
+  padding: 1.25rem;
+}
+
+.table-header-row {
+  margin-bottom: 1rem;
+}
+
+.section-title {
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--tekst);
+  margin-bottom: 0.35rem;
+}
+
+.table-hint {
+  font-size: 0.8rem;
+  color: var(--sublabel);
+}
+
+.table-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid var(--border);
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+  min-width: 800px;
+}
+
+thead { background: var(--groen); }
+
+thead th {
+  padding: 0.65rem 0.75rem;
+  text-align: left;
+  font-weight: 700;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  color: var(--wit);
+  white-space: nowrap;
+  border-right: 1px solid rgba(255,255,255,.15);
+  user-select: none;
+}
+
+thead th:last-child { border-right: none; }
+
+thead th.sortable {
+  cursor: pointer;
+}
+
+thead th.sortable::after {
+  content: ' ⇅';
+  opacity: .45;
+  font-size: .75em;
+}
+
+thead th.sort-asc::after  { content: ' ↑'; opacity: 1; }
+thead th.sort-desc::after { content: ' ↓'; opacity: 1; }
+
+thead th:focus-visible {
+  outline: 3px solid white;
+  outline-offset: -3px;
+}
+
+tbody tr {
+  border-bottom: 1px solid var(--border);
+  transition: background .1s;
+  cursor: pointer;
+}
+
+tbody tr:nth-child(even) { background: var(--achtergrond); }
+tbody tr:hover { background: #deeaef; }
+tbody tr:focus { outline: 2px solid var(--groen); outline-offset: -2px; }
+
+tbody td {
+  padding: 0.6rem 0.75rem;
+  vertical-align: top;
+  color: var(--tekst);
+}
+
+/* BB-nummer */
+.td-bb a {
+  font-weight: 700;
+  font-size: 0.8rem;
+  color: var(--groen);
+  text-decoration: none;
+  white-space: nowrap;
+}
+.td-bb a:hover { text-decoration: underline; }
+
+/* Titel */
+.col-titel { min-width: 280px; max-width: 380px; }
+.td-titel { max-width: 380px; }
+
+.titel-link {
+  color: var(--tekst);
+  text-decoration: none;
+  display: block;
+  line-height: 1.35;
+}
+.titel-link:hover { color: var(--groen); text-decoration: underline; }
+
+/* Status badges */
+.badge {
+  display: inline-block;
+  padding: 0.2rem 0.55rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  border-radius: var(--radius);
+  white-space: nowrap;
+}
+
+.badge--beantwoord {
+  background: rgba(0,129,31,.12);
+  color: var(--groen-donker);
+  border: 1px solid rgba(0,129,31,.3);
+}
+
+.badge--open {
+  background: rgba(201,54,117,.1);
+  color: var(--roze-donker);
+  border: 1px solid rgba(201,54,117,.3);
+}
+
+/* Doorlooptijd */
+.dl { font-weight: 700; white-space: nowrap; }
+.dl--snel   { color: var(--groen); }
+.dl--matig  { color: var(--oranje); }
+.dl--lang   { color: var(--rood); }
+.dl--lopend { color: var(--sublabel); font-weight: 400; font-style: italic; }
+.dl--hint   { display: block; font-size: 0.7rem; font-weight: 300; color: var(--sublabel); }
+
+/* Datum */
+.td-datum { white-space: nowrap; font-size: 0.85rem; }
+
+/* Portaal link */
+.portaal-link {
+  display: inline-block;
+  font-size: 0.75rem;
+  color: var(--groen);
+  text-decoration: none;
+  margin-top: 0.2rem;
+}
+.portaal-link:hover { text-decoration: underline; }
+
+/* Loading row */
+.loading-row td {
+  padding: 2rem;
+  text-align: center;
+  color: var(--sublabel);
+  font-style: italic;
+}
+
+/* --- Paginering --- */
+.pagination {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  justify-content: center;
+  padding: 1rem 0 0.25rem;
+}
+
+.pagination button {
+  min-width: 2.2rem;
+  height: 2.2rem;
+  padding: 0 0.5rem;
+  border: 1.5px solid var(--border);
+  background: var(--wit);
+  color: var(--tekst);
+  font: inherit;
+  font-size: 0.875rem;
+  font-weight: 700;
+  cursor: pointer;
+  border-radius: var(--radius);
+  transition: background .12s, color .12s, border-color .12s;
+}
+
+.pagination button:hover {
+  background: var(--achtergrond);
+  border-color: var(--groen);
+}
+
+.pagination button.active {
+  background: var(--groen);
+  color: var(--wit);
+  border-color: var(--groen);
+}
+
+.pagination button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* --- Footer --- */
+.site-footer {
+  background: var(--tekst);
+  color: rgba(255,255,255,.75);
+  padding: 1.25rem 0;
+  margin-top: 2rem;
+  font-size: 0.825rem;
+}
+
+.site-footer a { color: rgba(255,255,255,.9); }
+
+/* --- Responsive --- */
+@media (max-width: 900px) {
+  .charts { grid-template-columns: 1fr; }
+  .chart-party, .chart-quarter { grid-column: auto; }
+}
+
+@media (max-width: 600px) {
+  .header-title h1 { font-size: 1.2rem; }
+  .kpis { grid-template-columns: 1fr 1fr; }
+  .filter-row { flex-direction: column; }
+  .search-wrap { flex: 1 1 auto; width: 100%; }
+  .select-group { width: 100%; }
+  .select-group select { flex: 1 1 120px; }
+}
+
+/* --- Print --- */
+@media print {
+  .site-header { background: white; color: black; }
+  .header-title h1 { color: black; }
+  .filters, .charts, .pagination, .site-footer { display: none; }
+  .kpis { display: grid; grid-template-columns: repeat(5, 1fr); }
+  .table-wrap { overflow: visible; border: none; }
+  table { font-size: 0.75rem; }
+  thead { background: #eee; }
+  thead th { color: black; }
+  tbody tr:nth-child(even) { background: #f9f9f9; }
+}
