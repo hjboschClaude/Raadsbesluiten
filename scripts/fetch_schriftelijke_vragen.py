@@ -338,4 +338,4 @@ if __name__ == "__main__":
         print(f"  {fouten} vragen konden niet opgehaald worden")
 
     print("\nStap 3: Excel genereren...")
-    create_excel(records, "schriftelijke_vragen.xlsx", download_count)
+    create_excel(records, "data/schriftelijke_vragen.xlsx", download_count)

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Converteert schriftelijke_vragen.xlsx naar dashboard/data/vragen.json.
+"""Converteert data/schriftelijke_vragen.xlsx naar data/vragen.json.
 
 Bereken ook de doorlooptijd (in kalenderdagen) per vraag.
 """
@@ -9,8 +9,8 @@ import os
 from datetime import datetime
 from openpyxl import load_workbook
 
-EXCEL_FILE = "schriftelijke_vragen.xlsx"
-JSON_FILE = "dashboard/data/vragen.json"
+EXCEL_FILE = "data/schriftelijke_vragen.xlsx"
+JSON_FILE = "data/vragen.json"
 VANDAAG = datetime.today().date()
 
 

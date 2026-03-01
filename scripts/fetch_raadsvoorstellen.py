@@ -258,4 +258,4 @@ if __name__ == "__main__":
     print(f"  {totaal_bijlagen} bijlagen in totaal")
 
     print("\nStap 3: Excel genereren...")
-    create_excel(records, "raadsvoorstellen.xlsx")
+    create_excel(records, "data/raadsvoorstellen.xlsx")

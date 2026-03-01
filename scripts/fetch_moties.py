@@ -451,4 +451,4 @@ if __name__ == "__main__":
     fetch_document_urls_for_overige(records)
 
     print("\nStap 4: Excel genereren...")
-    create_excel(records, "moties.xlsx")
+    create_excel(records, "data/moties.xlsx")
